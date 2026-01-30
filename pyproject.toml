@@ -1,0 +1,27 @@
+[project]
+name = "dpc-nowcasting"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "absl-py>=2.3.1",
+    "einops>=0.8.1",
+    "etils>=1.13.0",
+    "fiddle>=0.3.0",
+    "fire>=0.7.1",
+    "importlib-resources>=6.5.2",
+    "matplotlib>=3.10.8",
+    "numpy>=2.3.5",
+    "pandas>=2.3.3",
+    "pysteps>=1.19.0",
+    "pytorch-lightning>=2.6.0",
+    "pyyaml>=6.0.3",
+    "tdqm>=0.0.1",
+    "tensorboard>=2.20.0",
+    "torch>=2.9.1",
+    "torchvision>=0.24.1",
+    "tqdm>=4.67.1",
+    "xarray>=2025.12.0",
+    "zarr>=3.1.5",
+]

@@ -1,0 +1,21 @@
+{
+  "csv": "valid_datacubes_2021-01-01-2025-12-11_24x256x256_3x16x16_10000.csv",
+  "zarr": "/leonardo_scratch/fast/AI4W_forecast_2/italian-radar-dpc-sri.zarr",
+  "file": "sampled_datacubes_2021-01-01-2025-12-11_24x256x256_3x16x16_10000.csv",
+  "start_date": "2021-01-01",
+  "end_date": "2025-12-11",
+  "Dt": 24,
+  "w": 256,
+  "h": 256,
+  "step_T": 3,
+  "step_X": 16,
+  "step_Y": 16,
+  "N_nan": 10000,
+  "N_rand": 1,
+  "n_workers": 112,
+  "qmin": 0.0001,
+  "m": 0.1,
+  "s": 1,
+  "seed": null,
+  "timestamp": "2025-12-13 21:52:41"
+}
