@@ -1,0 +1,6 @@
+*.nc
+*.zarr/
+__pycache__/
+.ipynb_checkpoints/
+checkpoints/
+*.mp4
