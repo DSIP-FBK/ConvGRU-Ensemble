@@ -1,7 +1,7 @@
 import sys, os, time, argparse
 import numpy as np
 import pandas as pd
-import zarr
+import xarray as xr
 from multiprocessing import Pool
 from functools import partial
 from queue import Queue
@@ -10,77 +10,6 @@ from tqdm import tqdm
 
 
 START = time.time()
-
-# === Parse Arguments ===
-parser = argparse.ArgumentParser(description='Process valid datacubes from Zarr dataset')
-parser.add_argument('zarr_path', help='Path to the Zarr dataset')
-parser.add_argument('--start_date', default=None, type=str, help='Start date (YYYY-MM-DD)')
-parser.add_argument('--end_date', default=None, type=str, help='End date (YYYY-MM-DD)')
-parser.add_argument('--Dt', type=int, default=24, help='Time depth')
-parser.add_argument('--w', type=int, default=256, help='Spatial width')
-parser.add_argument('--h', type=int, default=256, help='Spatial height')
-parser.add_argument('--step_T', type=int, default=3, help='Time step')
-parser.add_argument('--step_X', type=int, default=16, help='X step')
-parser.add_argument('--step_Y', type=int, default=16, help='Y step')
-parser.add_argument('--n_workers', type=int, default=8, help='Number of parallel workers')
-parser.add_argument('--n_nan', type=int, default=10000, help='Maximum NaNs per datacube')
-args = parser.parse_args()
-
-
-# === PARAMETERS ===
-Dt = args.Dt      # time depth
-w = args.w        # x width
-h = args.h        # y height
-step_T = args.step_T
-step_X = args.step_X
-step_Y = args.step_Y
-N_nan = args.n_nan # maximum number of nans in each datacube
-
-n_workers = args.n_workers
-time_chunk_size = 3 * Dt
-
-
-# === Dataset Loading ===
-print(f"Opening Zarr dataset: {args.zarr_path}")
-try:
-    zg = zarr.open(args.zarr_path, mode='r')
-    RR_full = zg['RR']
-    time_array_full = pd.to_datetime(zg['time'][:])
-    
-    print(f"Full dataset shape: T={RR_full.shape[0]}, X={RR_full.shape[1]}, Y={RR_full.shape[2]}")
-    print(f"Full dataset time range: {time_array_full[0]} to {time_array_full[-1]}")
-except Exception as e:
-    print(f"Error loading Zarr dataset: {e}")
-    sys.exit(1)
-
-# Filter the dates
-start_date = pd.to_datetime(args.start_date) if args.start_date else time_array_full[0]
-end_date = pd.to_datetime(args.end_date) if args.end_date else time_array_full[-1]
-
-# Find indices corresponding to date range
-mask = (time_array_full >= start_date) & (time_array_full <= end_date)
-valid_indices = np.where(mask)[0]
-
-if len(valid_indices) == 0:
-    print(f"No data found between {start_date} and {end_date}")
-    sys.exit(1)
-
-t_start_idx = valid_indices[0]
-t_end_idx = valid_indices[-1] + 1
-
-# Slice the data
-size_T = t_end_idx - t_start_idx 
-size_X = RR_full.shape[1]
-size_Y = RR_full.shape[2]
-time_array = time_array_full[t_start_idx:t_end_idx]
-
-print(f"Filtered dataset shape: T={size_T}, X={size_X}, Y={size_Y}")
-print(f"Filtered dataset time range: {time_array[0]} to {time_array[-1]}")
-
-# Calculate maximum valid indices
-max_x = size_X - w + 1
-max_y = size_Y - h + 1
-max_t = size_T - Dt + 1
 
 
 # === Functions ===
@@ -228,6 +157,78 @@ def file_writer(output_queue, filename, batch_size=1000):
         
         print(f"Results saved to {filename}")
 
+
+# === Parse Arguments ===
+parser = argparse.ArgumentParser(description='Process valid datacubes from Zarr dataset')
+parser.add_argument('zarr_path', help='Path to the Zarr dataset')
+parser.add_argument('--start_date', default=None, type=str, help='Start date (YYYY-MM-DD)')
+parser.add_argument('--end_date', default=None, type=str, help='End date (YYYY-MM-DD)')
+parser.add_argument('--Dt', type=int, default=24, help='Time depth')
+parser.add_argument('--w', type=int, default=256, help='Spatial width')
+parser.add_argument('--h', type=int, default=256, help='Spatial height')
+parser.add_argument('--step_T', type=int, default=3, help='Time step')
+parser.add_argument('--step_X', type=int, default=16, help='X step')
+parser.add_argument('--step_Y', type=int, default=16, help='Y step')
+parser.add_argument('--n_workers', type=int, default=8, help='Number of parallel workers')
+parser.add_argument('--n_nan', type=int, default=10000, help='Maximum NaNs per datacube')
+args = parser.parse_args()
+
+
+# === PARAMETERS ===
+Dt = args.Dt      # time depth
+w = args.w        # x width
+h = args.h        # y height
+step_T = args.step_T
+step_X = args.step_X
+step_Y = args.step_Y
+N_nan = args.n_nan # maximum number of nans in each datacube
+
+n_workers = args.n_workers
+time_chunk_size = 3 * Dt
+
+
+# === Dataset Loading ===
+print(f"Opening Zarr dataset: {args.zarr_path}")
+try:
+    #zg = zarr.open(args.zarr_path, mode='r')
+    zg = xr.open_zarr(args.zarr_path, decode_times=True)
+    RR_full = zg['RR']
+    time_array_full = pd.to_datetime(zg['time'][:])
+    
+    print(f"Full dataset shape: T={RR_full.shape[0]}, X={RR_full.shape[1]}, Y={RR_full.shape[2]}")
+    print(f"Full dataset time range: {time_array_full[0]} to {time_array_full[-1]}")
+except Exception as e:
+    print(f"Error loading Zarr dataset: {e}")
+    sys.exit(1)
+
+# Filter the dates
+start_date = pd.to_datetime(args.start_date) if args.start_date else time_array_full[0]
+end_date = pd.to_datetime(args.end_date) if args.end_date else time_array_full[-1]
+
+# Find indices corresponding to date range
+mask = (time_array_full >= start_date) & (time_array_full <= end_date)
+valid_indices = np.where(mask)[0]
+
+if len(valid_indices) == 0:
+    print(f"No data found between {start_date} and {end_date}")
+    sys.exit(1)
+
+t_start_idx = valid_indices[0]
+t_end_idx = valid_indices[-1] + 1
+
+# Slice the data
+size_T = t_end_idx - t_start_idx 
+size_X = RR_full.shape[1]
+size_Y = RR_full.shape[2]
+time_array = time_array_full[t_start_idx:t_end_idx]
+
+print(f"Filtered dataset shape: T={size_T}, X={size_X}, Y={size_Y}")
+print(f"Filtered dataset time range: {time_array[0]} to {time_array[-1]}")
+
+# Calculate maximum valid indices
+max_x = size_X - w + 1
+max_y = size_Y - h + 1
+max_t = size_T - Dt + 1
 
 # === Time Continuity ===
 print("Checking time continuity...")
