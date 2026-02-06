@@ -1,7 +1,7 @@
 import json, sys, os, time, argparse
 import numpy as np
 import pandas as pd
-import zarr
+import xarray as xr
 from multiprocessing import Pool
 from queue import Queue
 from threading import Thread
@@ -125,7 +125,7 @@ def file_writer(output_queue, filename, batch_size=1000):
 # === Dataset Loading ===
 print(f"Opening Zarr dataset: {args.zarr_path}")
 try:
-    zg = zarr.open(args.zarr_path, mode='r')
+    zg = xr.open_zarr(args.zarr_path, mode='r')
     RR = zg['RR']
 except Exception as e:
     print(f"Error loading Zarr dataset: {e}")

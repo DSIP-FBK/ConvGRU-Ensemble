@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-import zarr
+import xarray as xr
 import torch
 from torch.utils.data import Dataset, DataLoader
 import pytorch_lightning as pl
@@ -38,7 +38,7 @@ class SampledRadarDataset(Dataset):
         self.coords = pd.read_csv(csv_path).sort_values('t')
         if indices is not None:
             self.coords = self.coords.iloc[list(indices)].reset_index(drop=True)
-        self.zg = zarr.open(zarr_path, mode='r')
+        self.zg = xr.open_zarr(zarr_path, mode='r')
         self.RR = self.zg['RR']
         self.rng = np.random.default_rng(seed=42) if deterministic else np.random.default_rng(int(time.time()))
         self.return_mask = return_mask
