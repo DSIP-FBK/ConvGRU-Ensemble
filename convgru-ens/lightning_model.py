@@ -1,12 +1,12 @@
 from typing import Any, Dict, Optional
-
+import numpy as np
 import torch
 import torchvision
 from torch import nn
 import pytorch_lightning as pl
-
 from model import EncoderDecoder
 from losses import build_loss
+from utils import rainrate_to_normalized, normalized_to_rainrate
 
 
 def apply_radar_colormap(tensor: torch.Tensor) -> torch.Tensor:
@@ -82,10 +82,10 @@ class RadarLightningModel(pl.LightningModule):
     def __init__(
         self,
         input_channels: int,
-        forecast_steps: int,
         num_blocks: int,
         ensemble_size: int = 1,
         noisy_decoder: bool = False,
+        forecast_steps: Optional[type | int] = None,
         loss_class: Optional[type | str] = None,
         loss_params: Optional[Dict[str, Any]] = None,
         masked_loss: bool = False,
@@ -110,16 +110,17 @@ class RadarLightningModel(pl.LightningModule):
         if self.hparams.ensemble_size > 1:
             print(f"Using ensemble mode: {self.hparams.ensemble_size} independent ensemble members will be generated.")
 
-    def forward(self, x: torch.Tensor, ensemble_size: int | None = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, forecast_steps: int, ensemble_size: int | None = None) -> torch.Tensor:
         ensemble_size = self.hparams.ensemble_size if ensemble_size is None else ensemble_size
-        return self.model(x, steps=self.hparams.forecast_steps, noisy_decoder=self.hparams.noisy_decoder, ensemble_size=ensemble_size)
+        return self.model(x, steps=forecast_steps, noisy_decoder=self.hparams.noisy_decoder, ensemble_size=ensemble_size)
 
     def shared_step(self, batch: Dict[str, torch.Tensor], split: str = "train", ensemble_size: int | None = None) -> torch.Tensor:
+        """Shared forward step used during training, validation and test."""
         data = batch['data']
         past = data[:, :-self.hparams.forecast_steps]
         future = data[:, -self.hparams.forecast_steps:]
         
-        preds = self(past, ensemble_size=ensemble_size).clamp(min=-1, max=1)  # Ensure predictions are within [-1, 1]
+        preds = self(past, forecast_steps=self.hparams.forecast_steps, ensemble_size=ensemble_size).clamp(min=-1, max=1)  # Ensure predictions are within [-1, 1]
 
         if self.hparams.masked_loss:
             mask = batch['mask'][:, -self.hparams.forecast_steps:]
@@ -192,7 +193,6 @@ class RadarLightningModel(pl.LightningModule):
         return loss
 
     def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx: int,) -> torch.Tensor:
-        # fix ensemble size to 10 during validation for better estimate
         loss = self.shared_step(batch, split="val", ensemble_size=10)
         return loss
 
@@ -224,3 +224,70 @@ class RadarLightningModel(pl.LightningModule):
             }
         else:
             return {"optimizer": optimizer}
+
+
+    def from_checkpoint(checkpoint_path: str) -> 'RadarLightningModel':
+        """Initialize the model and load the weights."""
+        model = RadarLightningModel(input_channels=1, num_blocks=5, noisy_decoder=True)
+        checkpoint = torch.load(checkpoint_path, weights_only=False, map_location=torch.device('cpu'))
+        
+        # Load only the model weights (state_dict)
+        model.load_state_dict(checkpoint['state_dict'])
+        return model
+    
+    def predict(self, past: torch.Tensor, forecast_steps: int = 1, ensemble_size: int = 1, device: str = 'cpu') -> torch.Tensor:
+        """Predict future radar frames."""
+        if len(past.shape) != 3:
+            raise ValueError("Input must be of shape (T, H, W)")
+        
+        T, H, W = past.shape
+        ensemble_size = self.hparams.ensemble_size if ensemble_size is None else ensemble_size
+
+        # Each block the model decrease the resolution by a factor of 2
+        # The input must be divisible by 2^(num_blocks-1)
+        divisor = 2 ** (self.hparams.num_blocks)
+        padH = (divisor - (H % divisor)) % divisor
+        padW = (divisor - (W % divisor)) % divisor
+        if padH != 0 or padW != 0:
+            padded_past = np.pad(past, ((0, 0), (0, padH), (0, padW)), mode='constant', constant_values=0)
+        
+        # Remove Nan
+        past_clean = np.nan_to_num(padded_past)
+        
+        # Reshape the input to (B, T, C, H, W)
+        past_clean = past_clean[np.newaxis, :, np.newaxis,...]
+
+        # Rainrate to normalized reflectivity
+        norm_past = rainrate_to_normalized(past_clean)
+
+        # Numpy to torch tensor
+        x = torch.from_numpy(norm_past)
+
+        # Move to device
+        x = x.to(device)
+        self.to(device)
+
+        # Forward pass
+        self.eval()
+        with torch.no_grad():
+            preds = self.model(x, forecast_steps, self.hparams.noisy_decoder, ensemble_size)
+
+        # Move to CPU
+        preds = preds.cpu()
+
+        # Tensor to numpy array
+        preds = preds.numpy()
+
+        # Rescale back to rain rate
+        preds = normalized_to_rainrate(preds)
+
+        # Remove the batch (T, E, H, W)
+        preds = preds.squeeze(0)
+        
+        # Swap the Time and Ensemble dimensions (E, T, H, W)
+        preds = np.swapaxes(preds, 0, 1)
+
+        # Remove the padding
+        preds = preds[..., :H, :W]
+
+        return preds
