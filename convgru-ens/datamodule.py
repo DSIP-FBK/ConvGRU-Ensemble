@@ -1,44 +1,18 @@
+import time
 import numpy as np
 import pandas as pd
 import xarray as xr
 import torch
 from torch.utils.data import Dataset, DataLoader
 import pytorch_lightning as pl
-import time
-
-def rainrate_to_reflectivity(rainrate: np.ndarray) -> np.ndarray:
-    """Convert rain rate to reflectivity using Marshall-Palmer relationship."""
-    epsilon = 1e-16
-    # We return 0 for any rain lighter than ~0.037mm/h
-    return (10 * np.log10(200 * rainrate ** 1.6 + epsilon)).clip(0, 60)
-
-def normalize_reflectivity(reflectivity: np.ndarray) -> np.ndarray:
-    """Normalize reflectivity from [0, 60] to [-1, 1]."""
-    return (reflectivity / 30.0) - 1.0
-
-def denormalize_reflectivity(normalized: np.ndarray) -> np.ndarray:
-    """Denormalize from [-1, 1] back to [0, 60] reflectivity."""
-    return (normalized + 1.0) * 30.0
-
-def reflectivity_to_rainrate(reflectivity: np.ndarray) -> np.ndarray:
-    """Convert reflectivity back to rain rate (inverse Marshall-Palmer)."""
-    # Z = 200 * R^1.6
-    # R = (Z / 200)^(1/1.6)
-    z_linear = 10 ** (reflectivity / 10.0)
-    return (z_linear / 200.0) ** (1.0 / 1.6)
-
-def rainrate_to_normalized(rainrate: np.ndarray) -> np.ndarray:
-    """Convert rain rate directly to normalized reflectivity."""
-    reflectivity = rainrate_to_reflectivity(rainrate)
-    return normalize_reflectivity(reflectivity)
-
+from utils import rainrate_to_normalized
 
 class SampledRadarDataset(Dataset):
     def __init__(self, zarr_path: str, csv_path: str, steps: int, return_mask: bool = False, deterministic: bool = False, augment: bool = False, indices=None):
         self.coords = pd.read_csv(csv_path).sort_values('t')
         if indices is not None:
             self.coords = self.coords.iloc[list(indices)].reset_index(drop=True)
-        self.zg = xr.open_zarr(zarr_path, mode='r')
+        self.zg = xr.open_zarr(zarr_path)
         self.RR = self.zg['RR']
         self.rng = np.random.default_rng(seed=42) if deterministic else np.random.default_rng(int(time.time()))
         self.return_mask = return_mask
@@ -103,7 +77,7 @@ class SampledRadarDataset(Dataset):
             t_start = t0
         t_slice = slice(t_start, t_start + self.steps)
         
-        data = normalize_reflectivity(rainrate_to_reflectivity(self.RR[t_slice, x_slice, y_slice]))
+        data = rainrate_to_normalized(self.RR[t_slice, x_slice, y_slice])
 
         # create a mask for all nan values over time dimension
         # shape: (1, H, W) - NOT repeated over time, broadcasting handles it
@@ -116,7 +90,7 @@ class SampledRadarDataset(Dataset):
         # convert to tensors
         data = torch.from_numpy(data[:, np.newaxis, :, :])
         if self.return_mask:
-            mask = torch.from_numpy(mask[:, np.newaxis, :, :])
+            mask = torch.from_numpy(mask.values[:, np.newaxis, :, :])
 
         # apply augmentations (training only)
         if self.augment:
