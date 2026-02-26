@@ -427,7 +427,8 @@ class RadarLightningModel(pl.LightningModule):
         else:
             return {"optimizer": optimizer}
 
-    def from_checkpoint(checkpoint_path: str, device: str = "cpu") -> "RadarLightningModel":
+    @classmethod
+    def from_checkpoint(cls, checkpoint_path: str, device: str = "cpu") -> "RadarLightningModel":
         """
         Load a model from a checkpoint file.
 
@@ -443,14 +444,13 @@ class RadarLightningModel(pl.LightningModule):
         model : RadarLightningModel
             Model with loaded weights.
         """
-        model = RadarLightningModel(input_channels=1, num_blocks=5, noisy_decoder=True)
-        checkpoint = torch.load(checkpoint_path, weights_only=False, map_location=torch.device(device))
+        return cls.load_from_checkpoint(
+            checkpoint_path,
+            map_location=torch.device(device),
+            strict=True,
+        )
 
-        # Load only the model weights (state_dict)
-        model.load_state_dict(checkpoint["state_dict"])
-        return model
-
-    def predict(self, past: torch.Tensor, forecast_steps: int = 1, ensemble_size: int = 1) -> torch.Tensor:
+    def predict(self, past: torch.Tensor, forecast_steps: int = 1, ensemble_size: int | None = 1) -> torch.Tensor:
         """
         Generate precipitation forecasts from past radar observations.
 
@@ -489,6 +489,7 @@ class RadarLightningModel(pl.LightningModule):
         divisor = 2 ** (self.hparams.num_blocks)
         padH = (divisor - (H % divisor)) % divisor
         padW = (divisor - (W % divisor)) % divisor
+        padded_past = past
         if padH != 0 or padW != 0:
             padded_past = np.pad(past, ((0, 0), (0, padH), (0, padW)), mode="constant", constant_values=0)
 

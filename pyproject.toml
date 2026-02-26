@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "ConvGRU-Ensemble"
 version = "0.1.0"
@@ -18,19 +22,30 @@ dependencies = [
     "pysteps>=1.19.0",
     "pytorch-lightning>=2.6.0",
     "pyyaml>=6.0.3",
-    "tdqm>=0.0.1",
+    "tqdm>=4.67.1",
     "tensorboard>=2.20.0",
     "torch>=2.9.1",
     "torchvision>=0.24.1",
-    "tqdm>=4.67.1",
     "xarray>=2025.12.0",
     "zarr>=3.1.5",
 ]
 
 [dependency-groups]
 dev = [
+    "pytest>=8.3.5",
     "pre-commit>=4.0.0",
     "ruff>=0.9.10",
+]
+
+[tool.setuptools]
+package-dir = {"" = "convgru-ens"}
+py-modules = [
+    "datamodule",
+    "lightning_model",
+    "losses",
+    "model",
+    "train",
+    "utils",
 ]
 
 [tool.ruff]
