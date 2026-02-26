@@ -1,6 +1,7 @@
+from typing import Any
+
 import torch
 from torch import nn
-from typing import Optional, Dict, Any
 
 
 class LossWithReduction(nn.Module):
@@ -14,7 +15,7 @@ class LossWithReduction(nn.Module):
         ``'sum'``, or ``'none'``. Default is ``'mean'``.
     """
 
-    def __init__(self, reduction: str = 'mean'):
+    def __init__(self, reduction: str = "mean"):
         """
         Initialize LossWithReduction.
 
@@ -25,9 +26,9 @@ class LossWithReduction(nn.Module):
             ``'sum'``, or ``'none'``. Default is ``'mean'``.
         """
         super().__init__()
-        assert reduction in ['mean', 'sum', 'none'], "reduction must be 'mean', 'sum', or 'none'"
+        assert reduction in ["mean", "sum", "none"], "reduction must be 'mean', 'sum', or 'none'"
         self.reduction = reduction
-    
+
     def apply_reduction(self, loss: torch.Tensor) -> torch.Tensor:
         """
         Apply the specified reduction to the loss tensor.
@@ -42,9 +43,9 @@ class LossWithReduction(nn.Module):
         reduced_loss : torch.Tensor
             Reduced loss tensor.
         """
-        if self.reduction == 'mean':
+        if self.reduction == "mean":
             return loss.mean()
-        elif self.reduction == 'sum':
+        elif self.reduction == "sum":
             return loss.sum()
         else:  # 'none'
             return loss
@@ -68,7 +69,7 @@ class MaskedLoss(LossWithReduction):
         ``'sum'``, or ``'none'``. Default is ``'mean'``.
     """
 
-    def __init__(self, elementwise_loss: nn.Module, reduction: str = 'mean'):
+    def __init__(self, elementwise_loss: nn.Module, reduction: str = "mean"):
         """
         Initialize MaskedLoss.
 
@@ -100,7 +101,7 @@ class MaskedLoss(LossWithReduction):
                        or (B, T, 1, *D)
                        or (B, 1, 1, *D), with 1 for valid and 0 for invalid pixels.
             Broadcasted to match preds/target shape if needed.
-            
+
         Returns
         -------
         loss : torch.Tensor
@@ -120,18 +121,18 @@ class MaskedLoss(LossWithReduction):
         broadcast_factor = elementwise_loss.numel() // mask.numel()
         valid_pixels = mask.sum() * broadcast_factor
         if valid_pixels > 0:
-            if self.reduction == 'mean':
+            if self.reduction == "mean":
                 return masked_loss.sum() / valid_pixels
-            elif self.reduction == 'sum':
+            elif self.reduction == "sum":
                 return masked_loss.sum()
             else:  # 'none'
                 return masked_loss
         else:
             return torch.tensor(0.0, device=preds.device)
 
-    
+
 class CRPS(LossWithReduction):
-    """
+    r"""
     Continuous Ranked Probability Score (CRPS) loss with optional temporal
     consistency regularization.
 
@@ -158,7 +159,7 @@ class CRPS(LossWithReduction):
         Deterministic target / analysis with channel C on dim=2 (should be 1).
     """
 
-    def __init__(self, temporal_lambda: float = 0.0, reduction: str = 'mean'):
+    def __init__(self, temporal_lambda: float = 0.0, reduction: str = "mean"):
         """
         Initialize CRPS loss.
 
@@ -201,30 +202,28 @@ class CRPS(LossWithReduction):
         # preds: (B, T, M, *D)
         # target: (B, T, C, *D) where C should be 1
         # target broadcasts against preds: (B, T, 1, *D) vs (B, T, M, *D)
-        
+
         # First term: E[|X - y|]
         # Compute absolute difference between each ensemble member and target
         diff_to_target = torch.abs(preds - target)  # (B, T, M, *D)
         term1 = diff_to_target.mean(dim=2)  # Average over ensemble: (B, T, *D)
-        
+
         # Second term: 0.5 * E[|X - X'|]
         # Compute pairwise differences between ensemble members
         # preds: (B, T, M, *D)
-        M = preds.shape[2]
-        
         # Expand for pairwise differences
         # preds_i: (B, T, M, 1, *D)
         # preds_j: (B, T, 1, M, *D)
         preds_i = preds.unsqueeze(3)
         preds_j = preds.unsqueeze(2)
-        
+
         # Pairwise absolute differences: (B, T, M, M, *D)
         pairwise_diff = torch.abs(preds_i - preds_j)
-        
+
         # Average over both ensemble dimensions
         # Sum over M*M pairs and divide by M*M
         term2 = 0.5 * pairwise_diff.mean(dim=(2, 3))  # (B, T, *D)
-        
+
         # CRPS
         crps = term1 - term2  # (B, T, *D)
 
@@ -236,7 +235,9 @@ class CRPS(LossWithReduction):
             # preds: (B, T, M, *D)
             # Compute differences between consecutive timesteps per ensemble member
             temporal_diff = preds[:, 1:, :, ...] - preds[:, :-1, :, ...]  # (B, T-1, M, *D)
-            temporal_penalty = torch.abs(temporal_diff).mean(dim=(1, 2))  # average over time and ensemble dimensions (B, *D)
+            temporal_penalty = torch.abs(temporal_diff).mean(
+                dim=(1, 2)
+            )  # average over time and ensemble dimensions (B, *D)
             # Add penalty to CRPS (before reduction, averaged over time)
             crps = crps + self.temporal_lambda * temporal_penalty
             crps = crps[:, None, None, ...]  # add time and channel dims back for consistency (B, 1, 1, *D)
@@ -248,7 +249,7 @@ class CRPS(LossWithReduction):
 
 
 class afCRPS(LossWithReduction):
-    """
+    r"""
     Almost fair CRPS (afCRPS) loss as in eq. (4) of Lang et al. (2024).
 
     Interpolates between the standard (energy-score style) CRPS and the
@@ -356,7 +357,7 @@ class afCRPS(LossWithReduction):
 
         # Exclude j == k (diagonal) since eq. (4) sums over k != j
         idx = torch.arange(M, device=preds.device)
-        mask = (idx[:, None] != idx[None, :])  # (M, M)
+        mask = idx[:, None] != idx[None, :]  # (M, M)
         term = term * mask.view(1, 1, M, M, *([1] * (term.dim() - 4)))
 
         # Sum over j and k dims → (B, T, *D)
@@ -373,7 +374,9 @@ class afCRPS(LossWithReduction):
             # preds: (B, T, M, *D)
             # Compute differences between consecutive timesteps per ensemble member
             temporal_diff = preds[:, 1:, :, ...] - preds[:, :-1, :, ...]  # (B, T-1, M, *D)
-            temporal_penalty = torch.abs(temporal_diff).mean(dim=(1, 2))  # average over time and ensemble dimensions (B, *D)
+            temporal_penalty = torch.abs(temporal_diff).mean(
+                dim=(1, 2)
+            )  # average over time and ensemble dimensions (B, *D)
             # Add penalty to afCRPS (before reduction, averaged over time)
             afcrps = afcrps + self.temporal_lambda * temporal_penalty
             afcrps = afcrps[:, None, None, ...]  # add time and channel dims back for consistency (B, 1, 1, *D)
@@ -381,21 +384,15 @@ class afCRPS(LossWithReduction):
             # Keep singleton channel dim for MaskedLoss compatibility: (B, T, 1, *D)
             afcrps = afcrps.unsqueeze(2)
 
-
         return self.apply_reduction(afcrps)
 
 
-PIXEL_LOSSES = {
-    'mse': nn.MSELoss,
-    'mae': nn.L1Loss,
-    'crps': CRPS,
-    'afcrps': afCRPS
-}
+PIXEL_LOSSES = {"mse": nn.MSELoss, "mae": nn.L1Loss, "crps": CRPS, "afcrps": afCRPS}
 
 
 def build_loss(
     loss_class: type | str,
-    loss_params: Optional[Dict[str, Any]] = None,
+    loss_params: dict[str, Any] | None = None,
     masked_loss: bool = False,
 ) -> nn.Module:
     """
@@ -444,11 +441,11 @@ def build_loss(
     # if the loss is masked, the reduction is handled in MaskedLoss
     if masked_loss and params is not None:
         # pop 'reduction' from loss_params and pass to MaskedLoss
-        reduction = params.pop('reduction', 'mean')
-        criterion = MaskedLoss(loss_class(reduction='none', **params), reduction=reduction)
+        reduction = params.pop("reduction", "mean")
+        criterion = MaskedLoss(loss_class(reduction="none", **params), reduction=reduction)
         print(f"Using masked loss: {loss_class.__name__} with params {params} and reduction {reduction}")
     elif masked_loss:
-        criterion = MaskedLoss(loss_class(reduction='none'), reduction='mean')
+        criterion = MaskedLoss(loss_class(reduction="none"), reduction="mean")
         print(f"Using masked loss: {loss_class.__name__} with default params and reduction 'mean'")
     else:
         if params is not None:
@@ -459,5 +456,3 @@ def build_loss(
             print(f"Using loss: {loss_class.__name__} with default params")
 
     return criterion
-
-

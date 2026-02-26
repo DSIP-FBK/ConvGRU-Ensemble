@@ -1,82 +1,167 @@
-# ConvGRU-Ensemble-Nowcasting
-Convolutional GRU nowcasting model with probabilistic ensemble training with CPRS loss
+# ConvGRU-Ensemble
 
-This repository contains the code used for preparing the data and training the ConvGRU model. An importance sampling method is used to select the precipitation events on which the model is trained. The model is trained using a CRPS loss to generate an ensemble of forecasts. 
+Ensemble precipitation nowcasting using Convolutional GRU networks trained with CRPS loss.
 
-The repository also contains a pre-trained ConvGRU model.
+The model encodes past radar frames into multi-scale hidden states and decodes them into an ensemble of probabilistic forecasts by running the decoder multiple times with different noise inputs.
 
-# Sructure of the repository
+## Setup
 
-The repository is structured as follows:
-- `data/`: Contains the script to download the italian radar dataset.
-- `convgru-ens/`: Contains the ConvGRU model architecture, the loss functions, the datamodule and the code to launch the training.
-- `convgru-ens/checkpoints/`: Contains the pre-trained ConvGRU model.
-- `convgru-ens/importance_sampler/`: Contains the importance sampling code.
-
-
-
-# Setup
-
-This project uses [uv](https://github.com/astral-sh/uv) to manage dependencies. Since the project already includes `pyproject.toml` and `uv.lock`, you can set up the environment with a single command:
+Requires Python ≥ 3.13. Uses [uv](https://github.com/astral-sh/uv) for dependency management.
 
 ```bash
 uv sync
 ```
 
-This will create a virtual environment and install all dependencies. To run scripts within this environment, use:
+## Quick start
 
-```bash
-uv run <command>
+### Inference with a pre-trained model
+
+```python
+import numpy as np
+import xarray as xr
+from lightning_model import RadarLightningModel
+
+# Load model from checkpoint
+model = RadarLightningModel.from_checkpoint("checkpoints/ConvGRU-CRPS_6past_12fut.ckpt")
+
+# Load radar data (rain rate in mm/h, shape: (T, H, W))
+radar = xr.open_dataarray("data/test_radar_sample_54.nc")
+past = radar[:6].values  # 6 past frames (~30 min at 5-min resolution)
+
+# Generate ensemble forecast
+preds = model.predict(past, forecast_steps=12, ensemble_size=10)
+# preds shape: (ensemble_size, forecast_steps, H, W) — rain rate in mm/h
+
+ensemble_mean = np.nanmean(preds, axis=0)
 ```
 
-# How to download the data
+See [`convgru-ens/notebooks/test_pretrained_model.ipynb`](convgru-ens/notebooks/test_pretrained_model.ipynb) for a full example with visualizations.
 
-To download the italian radar dataset, we can use the script download_italian_radar_zarr.py.
+## Data preparation
+
+The training pipeline expects a Zarr dataset with a rain rate variable `RR` indexed by `(time, x, y)`. The data preparation has two steps:
+
+### 1. Filter valid datacubes
+
+Scan the Zarr and find all space-time datacubes with fewer than `n_nan` NaN values:
 
 ```bash
-uv run python data/download_italian_radar_zarr.py
+cd convgru-ens/importance_sampler
+
+uv run python filter_nan.py path/to/dataset.zarr \
+    --start_date 2021-01-01 \
+    --end_date 2025-12-11 \
+    --Dt 24 --w 256 --h 256 \
+    --step_T 3 --step_X 16 --step_Y 16 \
+    --n_nan 10000 \
+    --n_workers 8
 ```
 
-The dataset will be downloaded in the `data/italian-radar-dpc-sri.zarr` directory. The zarr dataset contains radar data from YYYY-MM-DD to YYYY-MM-DD with a 10 minute time step, and from 2021-01-01 to 2025-12-11, with  a 5 minute time step. The dataset is updated with new radar data every 5 minutes. The total size of the dataset is > 55 GB.
+This outputs a CSV of valid `(t, x, y)` coordinates.
 
-# How to prepare the data
+### 2. Importance sampling
 
-To prepare the data for the training, we first need to filter the datacubes that contain more than N_nan NaN values and to sample the resulting valid datacubes using importance sampler script.
-
-The file filter_nan.py is used to filter the datacubes that contain more than N_nan NaN values. 
-The arguments are:
-- zarr_path: path to the zarr dataset
-- start_date: start date
-- end_date: end date
-- Dt: time depth of the datacube
-- w: x width of the datacube
-- h: y height of the datacube
-- step_T: time step of the moving window
-- step_X: x step of the moving window
-- step_Y: y step of the moving window
-- n_workers: number of parallel workers
-- n_nan: maximum number of NaNs per datacube
-
-The file sample_valid_datacubes.py is used to sample the valid datacubes.
-The arguments are:
-- zarr_path: path to the zarr dataset
-- csv_path: path to the csv with the valid datacube coordinates (created by filter_nan.py)
-- q_min: minimum selection probability (default 1e-4)
-- s: denominator in the exponential (default 1)
-- m: factor weighting the mean rescaled rain rate (default 0.1)
-- n_workers: number of parallel workers (default 8)
-- n_rand: number of random sampling of each datacube (default 1)
-
-The output of the script is a csv file with the coordinates of the valid datacubes and a metadata json file. The csv file is used as input for the training script. The metadata json file is used to save the hyperparameters of the importance sampler. A csv with pre-sampled datacubes is in `importance_sampler/output`
-
-# How to train the model
-
-After setting the hyperparameters in the train.py script, we can train the model
+Sample the valid datacubes with higher probability for rainier events:
 
 ```bash
+uv run python sample_valid_datacubes.py path/to/dataset.zarr valid_datacubes_*.csv \
+    --q_min 1e-4 \
+    --m 0.1 \
+    --n_workers 8
+```
+
+This outputs a sampled CSV (used for training) and a metadata JSON. A pre-sampled CSV is provided in [`convgru-ens/importance_sampler/output/`](convgru-ens/importance_sampler/output/).
+
+## Training
+
+Training is configured via [Fiddle](https://github.com/google/fiddle). The default configuration is defined in `train.py:experiment()`. Run with defaults:
+
+```bash
+cd convgru-ens
 uv run python train.py
 ```
 
-During the training, the metrics and some images of the predictions are saved in the logs directory. tensorboard can be used to visualize the metrics. After each epoch, the best model is saved in the checkpoints directory.
+Override any parameter from the command line:
 
-# How to use the model
+```bash
+uv run python train.py \
+    --config config:experiment \
+    --config set:model.num_blocks=5 \
+    --config set:model.forecast_steps=12 \
+    --config set:model.loss_class=crps \
+    --config set:model.ensemble_size=2 \
+    --config set:model.masked_loss=True \
+    --config set:datamodule.batch_size=16 \
+    --config set:datamodule.steps=18 \
+    --config set:trainer.max_epochs=100
+```
+
+Export the config to YAML for inspection:
+
+```bash
+uv run python train.py --export_yaml config.yaml
+```
+
+Logs and checkpoints are saved under `logs/`. Monitor training with TensorBoard:
+
+```bash
+uv run tensorboard --logdir logs/
+```
+
+### Key training parameters
+
+| Parameter | Description | Default |
+|---|---|---|
+| `model.input_channels` | Channels per grid point | `1` |
+| `model.num_blocks` | Encoder/decoder depth | `5` |
+| `model.forecast_steps` | Future steps to predict | `12` |
+| `model.ensemble_size` | Ensemble members | `2` |
+| `model.loss_class` | Loss function (`mse`, `mae`, `crps`, `afcrps`) | `crps` |
+| `model.masked_loss` | Mask out NaN regions | `True` |
+| `datamodule.steps` | Total timesteps per sample (past + future) | `18` |
+| `datamodule.batch_size` | Batch size | `16` |
+
+## Architecture
+
+```
+Input (B, T_past, 1, H, W)
+    │
+    ▼
+┌─────────────────────────┐
+│        Encoder           │  ConvGRU + PixelUnshuffle (×num_blocks)
+│  Spatial dims halve at   │  Channels: 1 → 4 → 16 → 64 → 256 → 1024
+│  each block              │
+└─────────┬───────────────┘
+          │ hidden states
+          ▼
+┌─────────────────────────┐
+│        Decoder           │  ConvGRU + PixelShuffle (×num_blocks)
+│  Noise input (×M runs)   │  Each run produces one ensemble member
+│  for ensemble generation │
+└─────────┬───────────────┘
+          │
+          ▼
+Output (B, T_future, M, H, W)
+```
+
+## Project structure
+
+```
+convgru-ens/
+├── model.py              # ConvGRU encoder-decoder architecture
+├── losses.py             # CRPS, afCRPS, masked loss wrappers
+├── lightning_model.py    # PyTorch Lightning training module
+├── datamodule.py         # Dataset and data loading
+├── train.py              # Training entry point (Fiddle config)
+├── utils.py              # Rain rate ↔ reflectivity conversions
+├── importance_sampler/   # Data preparation scripts
+│   ├── filter_nan.py
+│   ├── sample_valid_datacubes.py
+│   └── output/           # Pre-sampled datacube coordinates
+└── notebooks/
+    └── test_pretrained_model.ipynb
+```
+
+## License
+
+BSD 2-Clause — see [LICENSE](LICENSE).

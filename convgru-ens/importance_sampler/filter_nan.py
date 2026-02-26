@@ -1,13 +1,16 @@
-import sys, os, time, argparse
+import argparse
+import os
+import sys
+import time
+from functools import partial
+from multiprocessing import Pool
+from queue import Queue
+from threading import Thread
+
 import numpy as np
 import pandas as pd
 import xarray as xr
-from multiprocessing import Pool
-from functools import partial
-from queue import Queue
-from threading import Thread
 from tqdm import tqdm
-
 
 START = time.time()
 
@@ -40,12 +43,12 @@ def dim_nan_count(mask, dim, delta, dim_len):
 
     # Pad with zeros at the start along 'dim'
     pad_width = [(1, 0) if i == dim else (0, 0) for i in range(3)]
-    padded_cumsum = np.pad(cumsum, pad_width=pad_width, mode='constant', constant_values=0)
+    padded_cumsum = np.pad(cumsum, pad_width=pad_width, mode="constant", constant_values=0)
 
-    # Rolling window: padded[start+delta:start+delta+dim_len] - padded[start:start+dim_len-delta]    
+    # Rolling window: padded[start+delta:start+delta+dim_len] - padded[start:start+dim_len-delta]
     slices_start = [slice(dim_len - delta) if i == dim else slice(None) for i in range(3)]
     slices_end = [slice(delta, dim_len) if i == dim else slice(None) for i in range(3)]
-    
+
     # number of nans in each delta
     return padded_cumsum[tuple(slices_end)] - padded_cumsum[tuple(slices_start)]
 
@@ -75,7 +78,7 @@ def dc_nan_count(chunk, deltas, dim_lenghts):
     """
     # Compute NaN mask and cumsum along time axis
     nan_mask = np.isnan(chunk).astype(np.int16)
-    
+
     # Number of NaN along time
     nans_t = dim_nan_count(nan_mask, dim=0, delta=deltas[0], dim_len=dim_lenghts[0])
 
@@ -84,7 +87,7 @@ def dc_nan_count(chunk, deltas, dim_lenghts):
 
     # Number of NaN in the datacube (Y x X x T)
     nans_cube_chunk = dim_nan_count(nans_xt, dim=2, delta=deltas[2], dim_len=dim_lenghts[2])
-    
+
     return nans_cube_chunk
 
 
@@ -135,7 +138,7 @@ def process_chunk(time_range, t_start_idx, data, N_nan, deltas, steps, valid_sta
 
         # Compute the number of NaNs in each datacube in chunk
         nans_cube_chunk = dc_nan_count(chunk, deltas, dim_lenghts)
-        del chunk 
+        del chunk
 
         # Apply the mask
         valid_mask = nans_cube_chunk <= N_nan
@@ -149,15 +152,15 @@ def process_chunk(time_range, t_start_idx, data, N_nan, deltas, steps, valid_sta
         idx_t_rel = idx_t_rel.astype(np.int32)
         idx_x = idx_x.astype(np.int32)
         idx_y = idx_y.astype(np.int32)
-        
+
         # Convert relative time indices
         idx_t = idx_t_rel + start_t
-        
+
         # Keep only time indices in valid_starts_gap
         time_mask = np.isin(idx_t, valid_starts_gap)
         idx_t = idx_t[time_mask] + t_start_idx  # also convert to absolute index
         idx_x = idx_x[time_mask]
-        idx_y = idx_y[time_mask]        
+        idx_y = idx_y[time_mask]
 
         # Filter datacube indices according to steps
         stride_mask = (idx_t % steps[0] == 0) & (idx_x % steps[1] == 0) & (idx_y % steps[2] == 0)
@@ -166,7 +169,7 @@ def process_chunk(time_range, t_start_idx, data, N_nan, deltas, steps, valid_sta
         idx_t = idx_t[stride_mask]
 
         return idx_t, idx_x, idx_y
-    
+
     except Exception as e:
         print(f"Error processing chunk starting at t={start_t}: {e}", file=sys.stderr)
         sys.exit(1)
@@ -192,51 +195,51 @@ def file_writer(output_queue, filename, batch_size=1000):
     with open(filename, "w") as f:
         f.write("t,x,y\n")
         batch = []
-        
+
         while True:
             item = output_queue.get()
-            
+
             if item is None:  # Sentinel value to stop
                 # Write remaining batch
                 for t, x, y in batch:
                     f.write(f"{t},{x},{y}\n")
                 break
-            
-            batch.extend(zip(*item))
-            
+
+            batch.extend(zip(*item, strict=True))
+
             if len(batch) >= batch_size:
                 for t, x, y in batch:
                     f.write(f"{t},{x},{y}\n")
                 f.flush()
                 batch = []
-        
+
         print(f"Results saved to {filename}")
 
 
 # === Parse Arguments ===
-parser = argparse.ArgumentParser(description='Process valid datacubes from Zarr dataset')
-parser.add_argument('zarr_path', help='Path to the Zarr dataset')
-parser.add_argument('--start_date', default=None, type=str, help='Start date (YYYY-MM-DD)')
-parser.add_argument('--end_date', default=None, type=str, help='End date (YYYY-MM-DD)')
-parser.add_argument('--Dt', type=int, default=24, help='Time depth')
-parser.add_argument('--w', type=int, default=256, help='Spatial width')
-parser.add_argument('--h', type=int, default=256, help='Spatial height')
-parser.add_argument('--step_T', type=int, default=3, help='Time step')
-parser.add_argument('--step_X', type=int, default=16, help='X step')
-parser.add_argument('--step_Y', type=int, default=16, help='Y step')
-parser.add_argument('--n_workers', type=int, default=8, help='Number of parallel workers')
-parser.add_argument('--n_nan', type=int, default=10000, help='Maximum NaNs per datacube')
+parser = argparse.ArgumentParser(description="Process valid datacubes from Zarr dataset")
+parser.add_argument("zarr_path", help="Path to the Zarr dataset")
+parser.add_argument("--start_date", default=None, type=str, help="Start date (YYYY-MM-DD)")
+parser.add_argument("--end_date", default=None, type=str, help="End date (YYYY-MM-DD)")
+parser.add_argument("--Dt", type=int, default=24, help="Time depth")
+parser.add_argument("--w", type=int, default=256, help="Spatial width")
+parser.add_argument("--h", type=int, default=256, help="Spatial height")
+parser.add_argument("--step_T", type=int, default=3, help="Time step")
+parser.add_argument("--step_X", type=int, default=16, help="X step")
+parser.add_argument("--step_Y", type=int, default=16, help="Y step")
+parser.add_argument("--n_workers", type=int, default=8, help="Number of parallel workers")
+parser.add_argument("--n_nan", type=int, default=10000, help="Maximum NaNs per datacube")
 args = parser.parse_args()
 
 
 # === PARAMETERS ===
-Dt = args.Dt      # time depth
-w = args.w        # x width
-h = args.h        # y height
+Dt = args.Dt  # time depth
+w = args.w  # x width
+h = args.h  # y height
 step_T = args.step_T
 step_X = args.step_X
 step_Y = args.step_Y
-N_nan = args.n_nan # maximum number of nans in each datacube
+N_nan = args.n_nan  # maximum number of nans in each datacube
 
 n_workers = args.n_workers
 time_chunk_size = 3 * Dt
@@ -245,11 +248,11 @@ time_chunk_size = 3 * Dt
 # === Dataset Loading ===
 print(f"Opening Zarr dataset: {args.zarr_path}")
 try:
-    #zg = zarr.open(args.zarr_path, mode='r')
+    # zg = zarr.open(args.zarr_path, mode='r')
     zg = xr.open_zarr(args.zarr_path, decode_times=True)
-    RR_full = zg['RR']
-    time_array_full = pd.to_datetime(zg['time'][:])
-    
+    RR_full = zg["RR"]
+    time_array_full = pd.to_datetime(zg["time"][:])
+
     print(f"Full dataset shape: T={RR_full.shape[0]}, X={RR_full.shape[1]}, Y={RR_full.shape[2]}")
     print(f"Full dataset time range: {time_array_full[0]} to {time_array_full[-1]}")
 except Exception as e:
@@ -272,7 +275,7 @@ t_start_idx = valid_indices[0]
 t_end_idx = valid_indices[-1] + 1
 
 # Slice the data
-size_T = t_end_idx - t_start_idx 
+size_T = t_end_idx - t_start_idx
 size_X = RR_full.shape[1]
 size_Y = RR_full.shape[2]
 time_array = time_array_full[t_start_idx:t_end_idx]
@@ -288,18 +291,18 @@ max_t = size_T - Dt + 1
 # === Time Continuity ===
 print("Checking time continuity...")
 try:
-    expected_step = pd.Timedelta('00:05:00')
+    expected_step = pd.Timedelta("00:05:00")
     time_diffs = time_array[1:] - time_array[:-1]
     gaps = (time_diffs != expected_step).astype(int)
-    
+
     # Check continuity for windows of size Dt
-    window_sum = np.convolve(gaps, np.ones(Dt - 1, dtype=int), mode='valid')
-    
+    window_sum = np.convolve(gaps, np.ones(Dt - 1, dtype=int), mode="valid")
+
     # Find valid starting times: continuous windows at T_step intervals
-    valid_starts_gap = np.where((window_sum == 0))[0]
+    valid_starts_gap = np.where(window_sum == 0)[0]
     print(f"Found {len(valid_starts_gap)} valid time starts without gaps")
 
-    
+
 except Exception as e:
     print(f"Error in time continuity check: {e}", file=sys.stderr)
     sys.exit(1)
@@ -325,14 +328,14 @@ process_chunk_partial = partial(
     deltas=(Dt, w, h),
     steps=(step_T, step_X, step_Y),
     valid_starts_gap=valid_starts_gap,
-    dc_nan_count=dc_nan_count
+    dc_nan_count=dc_nan_count,
 )
 
 # Chek if file exists
-output_file = f'valid_datacubes_{args.start_date}-{args.end_date}_{Dt}x{w}x{h}_{step_T}x{step_X}x{step_Y}_{N_nan}.csv'
+output_file = f"valid_datacubes_{args.start_date}-{args.end_date}_{Dt}x{w}x{h}_{step_T}x{step_X}x{step_Y}_{N_nan}.csv"
 if os.path.exists(output_file):
     response = input(f"File {output_file} already exists. Overwrite? (y/n): ")
-    if response.lower() != 'y':
+    if response.lower() != "y":
         print("Exiting without overwriting.")
         sys.exit(0)
     else:
@@ -346,16 +349,14 @@ writer_thread.start()
 
 # Process chunks in parallel
 with Pool(n_workers) as pool:
-    for i, hits in enumerate(tqdm(
-        pool.imap(process_chunk_partial, t_pairs, chunksize=1),
-        total=len(t_starts),
-        desc="Processing time chunks"
-    )):
+    for _i, hits in enumerate(
+        tqdm(pool.imap(process_chunk_partial, t_pairs, chunksize=1), total=len(t_starts), desc="Processing time chunks")
+    ):
         output_queue.put(hits)
 
 # Signal writer thread to stop
 output_queue.put(None)
 writer_thread.join()
 
-print(f'Done in {time.time() - START}s.')
+print(f"Done in {time.time() - START}s.")
 sys.exit(0)

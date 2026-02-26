@@ -1,11 +1,13 @@
 import time
+
 import numpy as np
 import pandas as pd
-import xarray as xr
-import torch
-from torch.utils.data import Dataset, DataLoader
 import pytorch_lightning as pl
+import torch
+import xarray as xr
+from torch.utils.data import DataLoader, Dataset
 from utils import rainrate_to_normalized
+
 
 class SampledRadarDataset(Dataset):
     """
@@ -37,7 +39,16 @@ class SampledRadarDataset(Dataset):
         Default is ``None``.
     """
 
-    def __init__(self, zarr_path: str, csv_path: str, steps: int, return_mask: bool = False, deterministic: bool = False, augment: bool = False, indices=None):
+    def __init__(
+        self,
+        zarr_path: str,
+        csv_path: str,
+        steps: int,
+        return_mask: bool = False,
+        deterministic: bool = False,
+        augment: bool = False,
+        indices=None,
+    ):
         """
         Initialize SampledRadarDataset.
 
@@ -60,11 +71,11 @@ class SampledRadarDataset(Dataset):
         indices : sequence of int or None, optional
             Subset of row indices from the CSV. Default is ``None``.
         """
-        self.coords = pd.read_csv(csv_path).sort_values('t')
+        self.coords = pd.read_csv(csv_path).sort_values("t")
         if indices is not None:
             self.coords = self.coords.iloc[list(indices)].reset_index(drop=True)
         self.zg = xr.open_zarr(zarr_path)
-        self.RR = self.zg['RR']
+        self.RR = self.zg["RR"]
         self.rng = np.random.default_rng(seed=42) if deterministic else np.random.default_rng(int(time.time()))
         self.return_mask = return_mask
         self.augment = augment
@@ -104,10 +115,9 @@ class SampledRadarDataset(Dataset):
         """
         return (len(self.coords), self.steps, 1, self.w, self.h)
 
-    def _apply_augmentations(self, *tensors,
-                             rotate_prob: float = 0.5,
-                             hflip_prob: float = 0.5,
-                             vflip_prob: float = 0.5):
+    def _apply_augmentations(
+        self, *tensors, rotate_prob: float = 0.5, hflip_prob: float = 0.5, vflip_prob: float = 0.5
+    ):
         """
         Apply random spatial augmentations consistently to all input tensors.
 
@@ -199,9 +209,9 @@ class SampledRadarDataset(Dataset):
                 data = self._apply_augmentations(data)
 
         if self.return_mask:
-            return {'data': data, 'mask': mask}
+            return {"data": data, "mask": mask}
         else:
-            return {'data': data}
+            return {"data": data}
 
 
 class RadarDataModule(pl.LightningDataModule):
@@ -297,7 +307,7 @@ class RadarDataModule(pl.LightningDataModule):
             datasets are always created. Default is ``None``.
         """
         # Load CSV to get total length for splitting
-        coords = pd.read_csv(self.csv_path).sort_values('t')
+        coords = pd.read_csv(self.csv_path).sort_values("t")
         n = len(coords)
 
         # Compute split indices
@@ -306,16 +316,31 @@ class RadarDataModule(pl.LightningDataModule):
 
         # Create separate datasets (augmentation only for training)
         self.train_dataset = SampledRadarDataset(
-            self.zarr_path, self.csv_path, self.steps, self.return_mask, self.deterministic,
-            augment=self.augment, indices=range(0, train_end)
+            self.zarr_path,
+            self.csv_path,
+            self.steps,
+            self.return_mask,
+            self.deterministic,
+            augment=self.augment,
+            indices=range(0, train_end),
         )
         self.val_dataset = SampledRadarDataset(
-            self.zarr_path, self.csv_path, self.steps, self.return_mask, self.deterministic,
-            augment=False, indices=range(train_end, val_end)
+            self.zarr_path,
+            self.csv_path,
+            self.steps,
+            self.return_mask,
+            self.deterministic,
+            augment=False,
+            indices=range(train_end, val_end),
         )
         self.test_dataset = SampledRadarDataset(
-            self.zarr_path, self.csv_path, self.steps, self.return_mask, self.deterministic,
-            augment=False, indices=range(val_end, n)
+            self.zarr_path,
+            self.csv_path,
+            self.steps,
+            self.return_mask,
+            self.deterministic,
+            augment=False,
+            indices=range(val_end, n),
         )
 
     def train_dataloader(self):
@@ -327,11 +352,7 @@ class RadarDataModule(pl.LightningDataModule):
         loader : DataLoader
             DataLoader over the training dataset with shuffling enabled.
         """
-        return DataLoader(
-            self.train_dataset,
-            shuffle=True,
-            **self.dataloader_kwargs
-        )
+        return DataLoader(self.train_dataset, shuffle=True, **self.dataloader_kwargs)
 
     def val_dataloader(self):
         """
@@ -342,11 +363,7 @@ class RadarDataModule(pl.LightningDataModule):
         loader : DataLoader
             DataLoader over the validation dataset without shuffling.
         """
-        return DataLoader(
-            self.val_dataset,
-            shuffle=False,
-            **self.dataloader_kwargs
-        )
+        return DataLoader(self.val_dataset, shuffle=False, **self.dataloader_kwargs)
 
     def test_dataloader(self):
         """
@@ -357,8 +374,4 @@ class RadarDataModule(pl.LightningDataModule):
         loader : DataLoader
             DataLoader over the test dataset without shuffling.
         """
-        return DataLoader(
-            self.test_dataset,
-            shuffle=False,
-            **self.dataloader_kwargs
-        )
+        return DataLoader(self.test_dataset, shuffle=False, **self.dataloader_kwargs)

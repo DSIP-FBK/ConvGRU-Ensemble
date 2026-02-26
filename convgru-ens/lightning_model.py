@@ -1,12 +1,12 @@
-from typing import Any, Dict, Optional
+from typing import Any
+
 import numpy as np
+import pytorch_lightning as pl
 import torch
 import torchvision
-from torch import nn
-import pytorch_lightning as pl
-from model import EncoderDecoder
 from losses import build_loss
-from utils import rainrate_to_normalized, normalized_to_rainrate
+from model import EncoderDecoder
+from utils import normalized_to_rainrate, rainrate_to_normalized
 
 
 def apply_radar_colormap(tensor: torch.Tensor) -> torch.Tensor:
@@ -27,22 +27,29 @@ def apply_radar_colormap(tensor: torch.Tensor) -> torch.Tensor:
         RGB tensor of shape ``(N, 3, H, W)`` with values in [0, 1].
     """
     # STEPS-BE colors (RGB values normalized to 0-1)
-    colors = torch.tensor([
-        [0, 255, 255],      # cyan
-        [0, 191, 255],      # deepskyblue
-        [30, 144, 255],     # dodgerblue
-        [0, 0, 255],        # blue
-        [127, 255, 0],      # chartreuse
-        [50, 205, 50],      # limegreen
-        [0, 128, 0],        # green
-        [0, 100, 0],        # darkgreen
-        [255, 255, 0],      # yellow
-        [255, 215, 0],      # gold
-        [255, 165, 0],      # orange
-        [255, 0, 0],        # red
-        [255, 0, 255],      # magenta
-        [139, 0, 139],      # darkmagenta
-    ], dtype=torch.float32, device=tensor.device) / 255.0
+    colors = (
+        torch.tensor(
+            [
+                [0, 255, 255],  # cyan
+                [0, 191, 255],  # deepskyblue
+                [30, 144, 255],  # dodgerblue
+                [0, 0, 255],  # blue
+                [127, 255, 0],  # chartreuse
+                [50, 205, 50],  # limegreen
+                [0, 128, 0],  # green
+                [0, 100, 0],  # darkgreen
+                [255, 255, 0],  # yellow
+                [255, 215, 0],  # gold
+                [255, 165, 0],  # orange
+                [255, 0, 0],  # red
+                [255, 0, 255],  # magenta
+                [139, 0, 139],  # darkmagenta
+            ],
+            dtype=torch.float32,
+            device=tensor.device,
+        )
+        / 255.0
+    )
 
     # dBZ levels: 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60 (11 levels, 10 intervals)
     # But we have 14 colors, so extend to cover 10-80 dBZ range with 5 dBZ steps
@@ -108,20 +115,21 @@ class RadarLightningModel(pl.LightningModule):
     lr_scheduler_params : dict or None, optional
         Keyword arguments for the LR scheduler. Default is ``None``.
     """
+
     def __init__(
         self,
         input_channels: int,
         num_blocks: int,
         ensemble_size: int = 1,
         noisy_decoder: bool = False,
-        forecast_steps: Optional[type | int] = None,
-        loss_class: Optional[type | str] = None,
-        loss_params: Optional[Dict[str, Any]] = None,
+        forecast_steps: type | int | None = None,
+        loss_class: type | str | None = None,
+        loss_params: dict[str, Any] | None = None,
         masked_loss: bool = False,
-        optimizer_class: Optional[type] = None,
-        optimizer_params: Optional[Dict[str, Any]] = None,
-        lr_scheduler_class: Optional[type] = None,
-        lr_scheduler_params: Optional[Dict[str, Any]] = None,
+        optimizer_class: type | None = None,
+        optimizer_params: dict[str, Any] | None = None,
+        lr_scheduler_class: type | None = None,
+        lr_scheduler_params: dict[str, Any] | None = None,
     ) -> None:
         """
         Initialize RadarLightningModel.
@@ -190,9 +198,13 @@ class RadarLightningModel(pl.LightningModule):
             ``(B, forecast_steps, ensemble_size, H, W)`` for ensembles.
         """
         ensemble_size = self.hparams.ensemble_size if ensemble_size is None else ensemble_size
-        return self.model(x, steps=forecast_steps, noisy_decoder=self.hparams.noisy_decoder, ensemble_size=ensemble_size)
+        return self.model(
+            x, steps=forecast_steps, noisy_decoder=self.hparams.noisy_decoder, ensemble_size=ensemble_size
+        )
 
-    def shared_step(self, batch: Dict[str, torch.Tensor], split: str = "train", ensemble_size: int | None = None) -> torch.Tensor:
+    def shared_step(
+        self, batch: dict[str, torch.Tensor], split: str = "train", ensemble_size: int | None = None
+    ) -> torch.Tensor:
         """
         Shared forward step used during training, validation, and testing.
 
@@ -215,14 +227,16 @@ class RadarLightningModel(pl.LightningModule):
         loss : torch.Tensor
             Scalar loss value.
         """
-        data = batch['data']
-        past = data[:, :-self.hparams.forecast_steps]
-        future = data[:, -self.hparams.forecast_steps:]
+        data = batch["data"]
+        past = data[:, : -self.hparams.forecast_steps]
+        future = data[:, -self.hparams.forecast_steps :]
 
-        preds = self(past, forecast_steps=self.hparams.forecast_steps, ensemble_size=ensemble_size).clamp(min=-1, max=1)  # Ensure predictions are within [-1, 1]
+        preds = self(past, forecast_steps=self.hparams.forecast_steps, ensemble_size=ensemble_size).clamp(
+            min=-1, max=1
+        )  # Ensure predictions are within [-1, 1]
 
         if self.hparams.masked_loss:
-            mask = batch['mask'][:, -self.hparams.forecast_steps:]
+            mask = batch["mask"][:, -self.hparams.forecast_steps :]
             loss = self.criterion(preds, future, mask)
         else:
             loss = self.criterion(preds, future)
@@ -231,16 +245,20 @@ class RadarLightningModel(pl.LightningModule):
         if isinstance(loss, tuple):
             loss, log_dict = loss
             # log_dict already contains split-prefixed keys like 'val/pixel_loss'
-            self.log_dict(log_dict, prog_bar=False, logger=True, on_step=(split=="train"), on_epoch=True, sync_dist=True)
+            self.log_dict(
+                log_dict, prog_bar=False, logger=True, on_step=(split == "train"), on_epoch=True, sync_dist=True
+            )
 
-        self.log(f"{split}_loss", loss, prog_bar=True, on_epoch=True, on_step=(split=="train"), sync_dist=True)
+        self.log(f"{split}_loss", loss, prog_bar=True, on_epoch=True, on_step=(split == "train"), sync_dist=True)
 
         # Log ensemble diversity for ensemble training
         if self.hparams.ensemble_size > 1:
             ensemble_std = preds.std(dim=2).mean()  # std across ensemble members
             self.log(f"{split}_ensemble_std", ensemble_std, on_epoch=True, sync_dist=True)
 
-        if split=="train" and (self.global_step in self.log_images_iterations or self.global_step % self.log_images_iterations[-1] == 0):
+        if split == "train" and (
+            self.global_step in self.log_images_iterations or self.global_step % self.log_images_iterations[-1] == 0
+        ):
             self.log_images(past, future, preds, split=split)
         return loss
 
@@ -277,7 +295,7 @@ class RadarLightningModel(pl.LightningModule):
 
         # Create combined preds grid: future (ground truth) as first row, then avg + ensemble members
         future_sample = future[sample_idx]  # (T, C, H, W)
-        preds_sample = preds[sample_idx]    # (T, E, H, W) or (T, C, H, W)
+        preds_sample = preds[sample_idx]  # (T, E, H, W) or (T, C, H, W)
 
         if self.hparams.ensemble_size > 1:
             # Layout: rows = [future, avg, member0, member1, ...], cols = timesteps
@@ -288,7 +306,7 @@ class RadarLightningModel(pl.LightningModule):
             rows = [future_sample]  # (T, 1, H, W)
             rows.append(preds_avg)  # (T, 1, H, W)
             for i in range(num_members_to_log):
-                rows.append(preds_sample[:, i:i+1, :, :])  # (T, 1, H, W)
+                rows.append(preds_sample[:, i : i + 1, :, :])  # (T, 1, H, W)
 
             # Stack all rows: (num_rows * T, 1, H, W)
             all_frames = torch.cat(rows, dim=0)  # ((2 + num_members) * T, 1, H, W)
@@ -305,7 +323,7 @@ class RadarLightningModel(pl.LightningModule):
             grid = torchvision.utils.make_grid(all_frames_rgb, nrow=future_sample.shape[0])
             self.logger.experiment.add_image(f"{split}/preds", grid, self.global_step)
 
-    def training_step(self, batch: Dict[str, torch.Tensor], batch_idx: int) -> torch.Tensor:
+    def training_step(self, batch: dict[str, torch.Tensor], batch_idx: int) -> torch.Tensor:
         """
         Execute a single training step.
 
@@ -324,7 +342,11 @@ class RadarLightningModel(pl.LightningModule):
         loss = self.shared_step(batch, split="train")
         return loss
 
-    def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx: int,) -> torch.Tensor:
+    def validation_step(
+        self,
+        batch: dict[str, torch.Tensor],
+        batch_idx: int,
+    ) -> torch.Tensor:
         """
         Execute a single validation step.
 
@@ -345,7 +367,7 @@ class RadarLightningModel(pl.LightningModule):
         loss = self.shared_step(batch, split="val", ensemble_size=10)
         return loss
 
-    def test_step(self, batch: Dict[str, torch.Tensor], batch_idx: int) -> torch.Tensor:
+    def test_step(self, batch: dict[str, torch.Tensor], batch_idx: int) -> torch.Tensor:
         """
         Execute a single test step.
 
@@ -366,7 +388,7 @@ class RadarLightningModel(pl.LightningModule):
         loss = self.shared_step(batch, split="test", ensemble_size=10)
         return loss
 
-    def configure_optimizers(self) -> Dict[str, Any]:
+    def configure_optimizers(self) -> dict[str, Any]:
         """
         Configure the optimizer and optional learning rate scheduler.
 
@@ -380,31 +402,32 @@ class RadarLightningModel(pl.LightningModule):
             keys, as expected by PyTorch Lightning.
         """
         if self.hparams.optimizer_class is not None:
-            optimizer = self.hparams.optimizer_class(self.parameters(), **self.hparams.optimizer_params) \
-                if self.hparams.optimizer_params is not None \
+            optimizer = (
+                self.hparams.optimizer_class(self.parameters(), **self.hparams.optimizer_params)
+                if self.hparams.optimizer_params is not None
                 else self.hparams.optimizer_class(self.parameters())
-            print(f"Using optimizer: {self.hparams.optimizer_class.__name__} with params {self.hparams.optimizer_params}")
+            )
+            print(
+                f"Using optimizer: {self.hparams.optimizer_class.__name__} with params {self.hparams.optimizer_params}"
+            )
         else:
             optimizer = torch.optim.Adam(self.parameters())
             print("Using default Adam optimizer with default parameters.")
 
         if self.hparams.lr_scheduler_class is not None:
-            lr_scheduler = self.hparams.lr_scheduler_class(optimizer, **self.hparams.lr_scheduler_params) \
-                if self.hparams.lr_scheduler_params is not None \
+            lr_scheduler = (
+                self.hparams.lr_scheduler_class(optimizer, **self.hparams.lr_scheduler_params)
+                if self.hparams.lr_scheduler_params is not None
                 else self.hparams.lr_scheduler_class(optimizer)
-            print(f"Using LR scheduler: {self.hparams.lr_scheduler_class.__name__} with params {self.hparams.lr_scheduler_params}")
-            return {
-                "optimizer": optimizer,
-                "lr_scheduler": {
-                    "scheduler": lr_scheduler,
-                    "monitor": "val_loss"
-                }
-            }
+            )
+            print(
+                f"Using LR scheduler: {self.hparams.lr_scheduler_class.__name__} with params {self.hparams.lr_scheduler_params}"
+            )
+            return {"optimizer": optimizer, "lr_scheduler": {"scheduler": lr_scheduler, "monitor": "val_loss"}}
         else:
             return {"optimizer": optimizer}
 
-
-    def from_checkpoint(checkpoint_path: str,  device: str = 'cpu') -> 'RadarLightningModel':
+    def from_checkpoint(checkpoint_path: str, device: str = "cpu") -> "RadarLightningModel":
         """
         Load a model from a checkpoint file.
 
@@ -424,7 +447,7 @@ class RadarLightningModel(pl.LightningModule):
         checkpoint = torch.load(checkpoint_path, weights_only=False, map_location=torch.device(device))
 
         # Load only the model weights (state_dict)
-        model.load_state_dict(checkpoint['state_dict'])
+        model.load_state_dict(checkpoint["state_dict"])
         return model
 
     def predict(self, past: torch.Tensor, forecast_steps: int = 1, ensemble_size: int = 1) -> torch.Tensor:
@@ -467,13 +490,13 @@ class RadarLightningModel(pl.LightningModule):
         padH = (divisor - (H % divisor)) % divisor
         padW = (divisor - (W % divisor)) % divisor
         if padH != 0 or padW != 0:
-            padded_past = np.pad(past, ((0, 0), (0, padH), (0, padW)), mode='constant', constant_values=0)
+            padded_past = np.pad(past, ((0, 0), (0, padH), (0, padW)), mode="constant", constant_values=0)
 
         # Remove Nan
         past_clean = np.nan_to_num(padded_past)
 
         # Reshape the input to (B, T, C, H, W)
-        past_clean = past_clean[np.newaxis, :, np.newaxis,...]
+        past_clean = past_clean[np.newaxis, :, np.newaxis, ...]
 
         # Rainrate to normalized reflectivity
         norm_past = rainrate_to_normalized(past_clean)

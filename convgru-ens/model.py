@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional
+
 
 class ResidualConvBlock(nn.Module):
     """
@@ -112,8 +112,7 @@ class ConvGRUCell(nn.Module):
         self.combined_gates = conv_layer(input_size + hidden_size, 2 * hidden_size, kernel_size, padding=padding)
         self.out_gate = conv_layer(input_size + hidden_size, hidden_size, kernel_size, padding=padding)
 
-
-    def forward(self, inpt: Optional[torch.Tensor] = None, h_s: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, inpt: torch.Tensor | None = None, h_s: torch.Tensor | None = None) -> torch.Tensor:
         """
         Forward the ConvGRU cell for a single timestep.
 
@@ -142,9 +141,13 @@ class ConvGRUCell(nn.Module):
         if h_s is None and inpt is None:
             raise ValueError("Both input and state can't be None")
         elif h_s is None:
-            h_s = torch.zeros(inpt.size(0), self.hidden_size, inpt.size(2), inpt.size(3), dtype=inpt.dtype, device=inpt.device)
+            h_s = torch.zeros(
+                inpt.size(0), self.hidden_size, inpt.size(2), inpt.size(3), dtype=inpt.dtype, device=inpt.device
+            )
         elif inpt is None:
-            inpt = torch.zeros(h_s.size(0), self.input_size, h_s.size(2), h_s.size(3), dtype=h_s.dtype, device=h_s.device)
+            inpt = torch.zeros(
+                h_s.size(0), self.input_size, h_s.size(2), h_s.size(3), dtype=h_s.dtype, device=h_s.device
+            )
 
         gamma, beta = torch.chunk(self.combined_gates(torch.cat([inpt, h_s], dim=1)), 2, dim=1)
         update = torch.sigmoid(gamma)
@@ -190,7 +193,7 @@ class ConvGRU(nn.Module):
         super().__init__()
         self.cell = ConvGRUCell(input_size, hidden_size, kernel_size, conv_layer)
 
-    def forward(self, x: Optional[torch.Tensor] = None, h: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, x: torch.Tensor | None = None, h: torch.Tensor | None = None) -> torch.Tensor:
         """
         Unroll the ConvGRU cell over the sequence (time) dimension.
 
@@ -323,7 +326,7 @@ class Encoder(nn.Module):
             :class:`EncoderBlock`.
         """
         super().__init__()
-        self.channel_sizes = [input_channels * 4 ** i for i in range(num_blocks)]  # [1, 4, 16, 64]
+        self.channel_sizes = [input_channels * 4**i for i in range(num_blocks)]  # [1, 4, 16, 64]
         self.blocks = nn.ModuleList([EncoderBlock(self.channel_sizes[i], **kwargs) for i in range(num_blocks)])
 
     def forward(self, x: torch.Tensor) -> list[torch.Tensor]:
@@ -441,8 +444,10 @@ class Decoder(nn.Module):
             :class:`DecoderBlock`.
         """
         super().__init__()
-        self.channel_sizes = [output_channels * 4 ** (i+1) for i in reversed(range(num_blocks))]  # [256, 64, 16, 4]
-        self.blocks = nn.ModuleList([DecoderBlock(self.channel_sizes[i], self.channel_sizes[i], **kwargs) for i in range(num_blocks)])
+        self.channel_sizes = [output_channels * 4 ** (i + 1) for i in reversed(range(num_blocks))]  # [256, 64, 16, 4]
+        self.blocks = nn.ModuleList(
+            [DecoderBlock(self.channel_sizes[i], self.channel_sizes[i], **kwargs) for i in range(num_blocks)]
+        )
 
     def forward(self, x: torch.Tensor, hidden_states: list[torch.Tensor]) -> torch.Tensor:
         """
@@ -461,7 +466,7 @@ class Decoder(nn.Module):
             Output tensor of shape
             ``(B, T, output_channels, H * 2^num_blocks, W * 2^num_blocks)``.
         """
-        for block, hidden_state in zip(self.blocks, hidden_states):
+        for block, hidden_state in zip(self.blocks, hidden_states, strict=True):
             x = block(x, hidden_state)
         return x
 

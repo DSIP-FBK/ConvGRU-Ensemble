@@ -20,7 +20,7 @@ def rainrate_to_reflectivity(rainrate: np.ndarray) -> np.ndarray:
     """
     epsilon = 1e-16
     # We return 0 for any rain lighter than ~0.037mm/h
-    return (10 * np.log10(200 * rainrate ** 1.6 + epsilon)).clip(0, 60)
+    return (10 * np.log10(200 * rainrate**1.6 + epsilon)).clip(0, 60)
 
 
 def normalize_reflectivity(reflectivity: np.ndarray) -> np.ndarray:
