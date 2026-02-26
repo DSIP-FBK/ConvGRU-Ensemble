@@ -2,27 +2,28 @@ import torch
 from torch import nn
 from typing import Optional, Dict, Any
 
-def mwae(x, y):
-    # Magnitude-Weighted Absolute Error (MWAE)
-    # the idea is to give more weight to the pixels with higher values
-    # x: ground truth (target)
-    # y: prediction
-    sx = torch.sigmoid(x)
-    sy = torch.sigmoid(y)
-    return torch.abs(sx - sy)*sx
-
 
 class LossWithReduction(nn.Module):
     """
     Base class for losses with reduction options.
 
-    Args
-    ----
-    reduction : str
-        'mean', 'sum', or 'none'.
+    Parameters
+    ----------
+    reduction : str, optional
+        Reduction mode to apply to the loss. Must be one of ``'mean'``,
+        ``'sum'``, or ``'none'``. Default is ``'mean'``.
     """
 
     def __init__(self, reduction: str = 'mean'):
+        """
+        Initialize LossWithReduction.
+
+        Parameters
+        ----------
+        reduction : str, optional
+            Reduction mode to apply to the loss. Must be one of ``'mean'``,
+            ``'sum'``, or ``'none'``. Default is ``'mean'``.
+        """
         super().__init__()
         assert reduction in ['mean', 'sum', 'none'], "reduction must be 'mean', 'sum', or 'none'"
         self.reduction = reduction
@@ -53,16 +54,34 @@ class MaskedLoss(LossWithReduction):
     """
     Wrapper to apply a mask to a given loss function.
 
-    Args
-    ----
+    Masks out invalid pixels before computing the loss, ensuring that only
+    valid regions contribute to the final value.
+
+    Parameters
+    ----------
     elementwise_loss : nn.Module
-        Base loss function to be masked. Should accept (preds, target) and
-        return element-wise loss (use reduction='none').
-    reduction : str
-        'mean', 'sum', or 'none'.
+        Base loss function to be masked. Must accept ``(preds, target)`` and
+        return element-wise (unreduced) loss. Should be instantiated with
+        ``reduction='none'``.
+    reduction : str, optional
+        Reduction mode applied after masking. Must be one of ``'mean'``,
+        ``'sum'``, or ``'none'``. Default is ``'mean'``.
     """
 
     def __init__(self, elementwise_loss: nn.Module, reduction: str = 'mean'):
+        """
+        Initialize MaskedLoss.
+
+        Parameters
+        ----------
+        elementwise_loss : nn.Module
+            Base loss function to be masked. Must accept ``(preds, target)``
+            and return element-wise (unreduced) loss. Should be instantiated
+            with ``reduction='none'``.
+        reduction : str, optional
+            Reduction mode applied after masking. Must be one of ``'mean'``,
+            ``'sum'``, or ``'none'``. Default is ``'mean'``.
+        """
         super().__init__(reduction=reduction)
         self.elementwise_loss = elementwise_loss
 
@@ -111,63 +130,73 @@ class MaskedLoss(LossWithReduction):
             return torch.tensor(0.0, device=preds.device)
 
     
-
-class MWAE(LossWithReduction):
-    """
-    Magnitude-Weighted Absolute Error (MWAE) loss
-
-    Expected shapes
-    ---------------
-    preds : (B, T, C, *D)
-        Predictions with time T on dim=1, channel C on dim=2.
-    target : (B, T, C, *D)
-        Deterministic target / analysis with channel C on dim=2.
-    """
-    
-    def __init__(self, reduction: str = 'mean'):
-        super().__init__(reduction=reduction)
-    
-    def forward(self, preds: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        """
-        Compute MWAE loss.
-        """
-        loss = mwae(target, preds)
-        return self.apply_reduction(loss)
-
-
 class CRPS(LossWithReduction):
     """
-    CRPS loss with optional temporal consistency regularization.
+    Continuous Ranked Probability Score (CRPS) loss with optional temporal
+    consistency regularization.
 
-    Args
-    ----
-    temporal_lambda : float
-        Weight for temporal consistency penalty. If 0 (default), disabled.
-        When enabled, adds a penalty for large differences between consecutive
-        timesteps within each ensemble member, preventing pulsing artifacts.
-    reduction : str
-        'mean', 'sum', or 'none'. 'mean' averages over batch and
-        all non-ensemble dimensions.
+    CRPS = E[|X - y|] - 0.5 * E[|X - X'|], where X, X' are independent
+    samples from the forecast distribution and y is the observation.
+
+    Parameters
+    ----------
+    temporal_lambda : float, optional
+        Weight for the temporal consistency penalty. If ``0.0`` (default),
+        the penalty is disabled. When enabled, adds a penalty for large
+        differences between consecutive timesteps within each ensemble
+        member, preventing pulsing artifacts.
+    reduction : str, optional
+        Reduction mode. Must be one of ``'mean'``, ``'sum'``, or ``'none'``.
+        ``'mean'`` averages over batch and all non-ensemble dimensions.
+        Default is ``'mean'``.
 
     Expected shapes
     ---------------
-    preds : (B, T, M, *D)
+    preds : (B, T, M, \*D)
         Ensemble predictions with time T on dim=1, ensemble size M on dim=2.
-    target : (B, T, C, *D)
+    target : (B, T, C, \*D)
         Deterministic target / analysis with channel C on dim=2 (should be 1).
     """
 
     def __init__(self, temporal_lambda: float = 0.0, reduction: str = 'mean'):
+        """
+        Initialize CRPS loss.
+
+        Parameters
+        ----------
+        temporal_lambda : float, optional
+            Weight for the temporal consistency penalty. Default is ``0.0``
+            (disabled).
+        reduction : str, optional
+            Reduction mode. Must be one of ``'mean'``, ``'sum'``, or
+            ``'none'``. Default is ``'mean'``.
+        """
         super().__init__(reduction=reduction)
         self.temporal_lambda = temporal_lambda
-    
+
     def forward(self, preds: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         """
         Compute CRPS loss.
-        
-        CRPS = E[|X - y|] - 0.5 * E[|X - X'|]
-        where X, X' are independent samples from the forecast distribution
-        and y is the observation.
+
+        CRPS = E[|X - y|] - 0.5 * E[|X - X'|], where X, X' are independent
+        samples from the forecast distribution and y is the observation.
+
+        Parameters
+        ----------
+        preds : torch.Tensor
+            Ensemble forecasts of shape ``(B, T, M, *D)``, where B is batch
+            size, T is the number of timesteps, M is ensemble size, and
+            ``*D`` are spatial dimensions.
+        target : torch.Tensor
+            Verifying observation / analysis of shape ``(B, T, C, *D)``,
+            where C should be 1. Broadcasts against ``preds`` on dim=2.
+
+        Returns
+        -------
+        loss : torch.Tensor
+            Scalar if ``reduction='mean'`` or ``'sum'``, otherwise a tensor
+            of shape ``(B, T, 1, *D)`` (or ``(B, 1, 1, *D)`` when
+            ``temporal_lambda > 0``).
         """
         # preds: (B, T, M, *D)
         # target: (B, T, C, *D) where C should be 1
@@ -220,26 +249,56 @@ class CRPS(LossWithReduction):
 
 class afCRPS(LossWithReduction):
     """
-    Almost fair CRPS loss as in eq. (4) of Lang et al. (2024)
+    Almost fair CRPS (afCRPS) loss as in eq. (4) of Lang et al. (2024).
 
-    Args
-    ----
-    alpha : float
-        Fairness parameter in (0, 1]; alpha=1 recovers the fair CRPS.
-        In the paper alpha=0.95 is used.
-    reduction : str
-        'mean', 'sum', or 'none'. 'mean' averages over batch and
-        all non-ensemble dimensions.
+    Interpolates between the standard (energy-score style) CRPS and the
+    fair CRPS via the fairness parameter ``alpha``.
+
+    Parameters
+    ----------
+    alpha : float, optional
+        Fairness parameter in ``(0, 1]``. ``alpha=1`` recovers the fair
+        CRPS. Lang et al. (2024) recommend ``alpha=0.95``. Default is
+        ``0.95``.
+    temporal_lambda : float, optional
+        Weight for the temporal consistency penalty. If ``0.0`` (default),
+        the penalty is disabled. When enabled, adds a penalty for large
+        differences between consecutive timesteps within each ensemble
+        member.
+    reduction : str, optional
+        Reduction mode. Must be one of ``'mean'``, ``'sum'``, or ``'none'``.
+        ``'mean'`` averages over batch and all non-ensemble dimensions.
+        Default is ``'mean'``.
 
     Expected shapes
     ---------------
-    preds : (B, T, M, *D)
+    preds : (B, T, M, \*D)
         Ensemble predictions with time T on dim=1, ensemble size M on dim=2.
-    target : (B, T, C, *D)
+    target : (B, T, C, \*D)
         Deterministic target / analysis with channel C on dim=2 (should be 1).
     """
 
     def __init__(self, alpha: float = 0.95, temporal_lambda: float = 0.0, reduction: str = "mean"):
+        """
+        Initialize afCRPS loss.
+
+        Parameters
+        ----------
+        alpha : float, optional
+            Fairness parameter in ``(0, 1]``. ``alpha=1`` recovers the fair
+            CRPS. Default is ``0.95``.
+        temporal_lambda : float, optional
+            Weight for the temporal consistency penalty. Default is ``0.0``
+            (disabled).
+        reduction : str, optional
+            Reduction mode. Must be one of ``'mean'``, ``'sum'``, or
+            ``'none'``. Default is ``'mean'``.
+
+        Raises
+        ------
+        ValueError
+            If ``alpha`` is not in ``(0, 1]``.
+        """
         super().__init__(reduction=reduction)
         if not (0.0 < alpha <= 1.0):
             raise ValueError("alpha must be in (0, 1].")
@@ -326,13 +385,9 @@ class afCRPS(LossWithReduction):
         return self.apply_reduction(afcrps)
 
 
-
-
-
 PIXEL_LOSSES = {
     'mse': nn.MSELoss,
     'mae': nn.L1Loss,
-    'mwae': MWAE,
     'crps': CRPS,
     'afcrps': afCRPS
 }
@@ -343,7 +398,39 @@ def build_loss(
     loss_params: Optional[Dict[str, Any]] = None,
     masked_loss: bool = False,
 ) -> nn.Module:
-    
+    """
+    Build a loss function, optionally wrapped with masking.
+
+    Resolves a loss class by name (from ``PIXEL_LOSSES``) or accepts a class
+    directly, instantiates it with the given parameters, and optionally wraps
+    it in a :class:`MaskedLoss`.
+
+    Parameters
+    ----------
+    loss_class : type or str
+        Loss class or its string name. Accepted string names are the keys of
+        ``PIXEL_LOSSES``: ``'mse'``, ``'mae'``, ``'crps'``, ``'afcrps'``.
+        If ``None``, defaults to ``nn.MSELoss``.
+    loss_params : dict of str to any, optional
+        Keyword arguments forwarded to the loss class constructor. If
+        ``masked_loss`` is ``True``, the ``'reduction'`` key (if present)
+        is extracted and passed to :class:`MaskedLoss` instead. Default is
+        ``None``.
+    masked_loss : bool, optional
+        If ``True``, the loss is wrapped in :class:`MaskedLoss` and the
+        inner loss is instantiated with ``reduction='none'``. Default is
+        ``False``.
+
+    Returns
+    -------
+    criterion : nn.Module
+        Instantiated loss module, optionally wrapped in :class:`MaskedLoss`.
+
+    Raises
+    ------
+    ValueError
+        If ``loss_class`` is a string not found in ``PIXEL_LOSSES``.
+    """
     if isinstance(loss_class, str):
         if loss_class.lower() not in PIXEL_LOSSES:
             raise ValueError(f"Unknown loss class '{loss_class}'. Available: {list(PIXEL_LOSSES.keys())}")

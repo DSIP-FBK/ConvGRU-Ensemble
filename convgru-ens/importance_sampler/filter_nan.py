@@ -15,16 +15,26 @@ START = time.time()
 # === Functions ===
 def dim_nan_count(mask, dim, delta, dim_len):
     """
-    Compute the number of NaN in each delta along dim
+    Count NaN values in a rolling window along a single dimension.
 
-    Args:
-        mask: array of NaN
-        dim: (int) dimension along which to compute NaN
-        delta: (int) number of pixels along dim
-        dim_len: (int) lenght of the dimension
+    Uses a cumulative-sum trick to efficiently compute the number of NaN
+    values within each window of size ``delta`` along the specified axis.
+
+    Parameters
+    ----------
+    mask : np.ndarray
+        3-D binary array where 1 indicates NaN and 0 indicates valid.
+    dim : int
+        Axis along which to compute the rolling NaN count (0, 1, or 2).
+    delta : int
+        Window size (number of pixels) along ``dim``.
+    dim_len : int
+        Length of ``dim`` in the input array.
 
     Returns
-        array of integers with the number of NaN
+    -------
+    nan_counts : np.ndarray
+        Integer array with the NaN count for each window position.
     """
     cumsum = np.cumsum(mask, axis=dim, dtype=np.int32)
 
@@ -42,14 +52,26 @@ def dim_nan_count(mask, dim, delta, dim_len):
 
 def dc_nan_count(chunk, deltas, dim_lenghts):
     """
-    Compute the number of nan in each datacube
-    
-    Args:
-        chunk: time chunk of the total zarr (full space)
-    
-    Returns: 
-        array of integers with the number of NaN for each datacube:
-        nans_cube_chunk(it,ix,iy) = number of NaN in (it:it+Dt, ix:ix+w, iy:iy+h)
+    Count the number of NaN values in each 3-D datacube within a chunk.
+
+    Applies :func:`dim_nan_count` sequentially along time, X, and Y to
+    compute the total NaN count for every possible datacube position.
+
+    Parameters
+    ----------
+    chunk : np.ndarray
+        3-D array of shape ``(T, X, Y)`` — a time chunk of the full Zarr
+        dataset.
+    deltas : tuple of int
+        Datacube dimensions ``(Dt, w, h)`` along time, X, and Y.
+    dim_lenghts : tuple of int
+        Shape of ``chunk``, i.e. ``(T, X, Y)``.
+
+    Returns
+    -------
+    nans_cube_chunk : np.ndarray
+        Integer array where ``nans_cube_chunk[it, ix, iy]`` is the number of
+        NaN values in the datacube ``chunk[it:it+Dt, ix:ix+w, iy:iy+h]``.
     """
     # Compute NaN mask and cumsum along time axis
     nan_mask = np.isnan(chunk).astype(np.int16)
@@ -68,20 +90,40 @@ def dc_nan_count(chunk, deltas, dim_lenghts):
 
 def process_chunk(time_range, t_start_idx, data, N_nan, deltas, steps, valid_starts_gap, dc_nan_count):
     """
-    Process a single time chunk and return valid indices.
-    
-    Args:
-        time_range: Start and end indices of the chunk
-        t_start_idx: Index corresponding to start_date
-        data: Zarr array
-        N_nan: maximum number of NaN in each datacube
-        Dt: time step along time
+    Process a single time chunk and return valid datacube indices.
 
-        ... other parameters ...
-        dc_nan_count: Function to count NaNs in datacubes
-    
-    Returns:
-        tuple of (idx_x, idx_y, idx_t)
+    Loads the chunk from the Zarr array, counts NaN values per datacube,
+    filters by the maximum allowed NaN threshold and time-continuity
+    constraints, and returns the valid ``(t, x, y)`` indices.
+
+    Parameters
+    ----------
+    time_range : array-like of int
+        Two-element sequence ``(start_t, end_t)`` defining the chunk
+        boundaries (relative to ``t_start_idx``).
+    t_start_idx : int
+        Absolute time index corresponding to the dataset start date.
+    data : xr.DataArray
+        Zarr-backed data array with the ``'RR'`` variable.
+    N_nan : int
+        Maximum number of NaN values allowed per datacube.
+    deltas : tuple of int
+        Datacube dimensions ``(Dt, w, h)``.
+    steps : tuple of int
+        Stride ``(step_T, step_X, step_Y)`` for subsampling valid indices.
+    valid_starts_gap : np.ndarray
+        Array of valid time-start indices that have no temporal gaps.
+    dc_nan_count : callable
+        Function to count NaN values per datacube (see :func:`dc_nan_count`).
+
+    Returns
+    -------
+    idx_t : np.ndarray
+        Absolute time indices of valid datacubes.
+    idx_x : np.ndarray
+        X indices of valid datacubes.
+    idx_y : np.ndarray
+        Y indices of valid datacubes.
     """
     try:
         # start_t: start index of the chunk
@@ -132,7 +174,20 @@ def process_chunk(time_range, t_start_idx, data, N_nan, deltas, steps, valid_sta
 
 def file_writer(output_queue, filename, batch_size=1000):
     """
-    Dedicated thread that writes results to file as they arrive from queue.
+    Dedicated writer thread that flushes results to a CSV file in batches.
+
+    Reads ``(idx_t, idx_x, idx_y)`` tuples from the queue and writes them
+    as rows to the output file. Stops when a ``None`` sentinel is received.
+
+    Parameters
+    ----------
+    output_queue : queue.Queue
+        Thread-safe queue providing ``(idx_t, idx_x, idx_y)`` tuples.
+    filename : str
+        Path to the output CSV file.
+    batch_size : int, optional
+        Number of rows to buffer before flushing to disk. Default is
+        ``1000``.
     """
     with open(filename, "w") as f:
         f.write("t,x,y\n")

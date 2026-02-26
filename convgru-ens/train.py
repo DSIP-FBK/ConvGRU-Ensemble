@@ -25,7 +25,18 @@ flags.DEFINE_string('export_yaml', None, 'Export configuration to YAML file and 
 
 
 def experiment() -> fdl.Config:
-    """Experiment configuration. Override any value with --config config:experiment --config set:path.to.value=X"""
+    """
+    Define the default experiment configuration.
+
+    Returns a Fiddle config that can be overridden from the command line
+    with ``--config config:experiment --config set:path.to.value=X``.
+
+    Returns
+    -------
+    cfg : fdl.Config
+        Nested Fiddle configuration containing datamodule, model, trainer,
+        callbacks, and logger settings.
+    """
     cfg = fdl.Config(dict)
 
     # resume from checkpoint
@@ -133,7 +144,18 @@ _CONFIG = absl_flags.DEFINE_fiddle_config(
 
 
 def train(cfg: fdl.Config) -> None:
-    """Run training with the given fiddle configuration."""
+    """
+    Run training with the given Fiddle configuration.
+
+    Builds all components (model, datamodule, trainer, callbacks, loggers),
+    sets up dynamic naming for checkpoints and TensorBoard logs, saves the
+    config as YAML, and runs ``trainer.fit`` followed by ``trainer.test``.
+
+    Parameters
+    ----------
+    cfg : fdl.Config
+        Fiddle configuration as returned by :func:`experiment`.
+    """
     # enable tensor cores for float32 matmuls if available
     if cfg.float32_matmul_precision is not None:
         torch.set_float32_matmul_precision(cfg.float32_matmul_precision)
@@ -225,7 +247,19 @@ def train(cfg: fdl.Config) -> None:
 
 
 def config_to_dict(cfg: fdl.Config) -> dict:
-    """Convert fiddle config to nested dict for YAML export."""
+    """
+    Recursively convert a Fiddle config to a nested dictionary.
+
+    Parameters
+    ----------
+    cfg : fdl.Config
+        Fiddle configuration object.
+
+    Returns
+    -------
+    result : dict
+        Plain dictionary suitable for YAML serialization.
+    """
     result = {}
     for key, value in fdl.ordered_arguments(cfg).items():
         result[key] = config_to_dict(value) if isinstance(value, fdl.Config) else value
@@ -233,6 +267,17 @@ def config_to_dict(cfg: fdl.Config) -> dict:
 
 
 def main(argv: list[str]) -> None:
+    """
+    Entry point for the training script.
+
+    Handles ``--print_config`` and ``--export_yaml`` flags, then delegates
+    to :func:`train`.
+
+    Parameters
+    ----------
+    argv : list of str
+        Command-line arguments (unused, consumed by ``absl``).
+    """
     del argv
     cfg = _CONFIG.value
     if FLAGS.print_config:

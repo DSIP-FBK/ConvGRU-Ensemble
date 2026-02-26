@@ -49,23 +49,52 @@ N_nan = int(N_nan)
 
 # === FUNCTIONS ===
 def acceptance_probability(data):
-    """Calculate acceptance probability based on data mean."""
+    """
+    Calculate the acceptance probability for importance sampling.
+
+    The probability is ``min(1, q_min + m * mean(data))``, where ``q_min``
+    and ``m`` are module-level parameters.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        Rescaled rain rate data for a single datacube.
+
+    Returns
+    -------
+    q : float
+        Acceptance probability in ``[q_min, 1]``.
+    """
     return min(1., qmin + m * np.nanmean(data))
 
 
 def process_datacube(coord, RR, N_rand, seed, acceptance_probability):
     """
     Process a single space-time region for importance sampling.
-    
-    Args:
-        coord: tuple of (it, ix, iy)
-        RR: rain rate data (from the zarr)
-        N_rand: numeber of random sampling
-        seed: integer seed is for reproducibility
-        acceptance_probability: function to compute the acceptance probability
-    
-    Returns:
-        list of accepted (it, ix, iy) tuples
+
+    Loads the datacube, rescales rain rate, computes an acceptance
+    probability, and performs ``N_rand`` random acceptance trials.
+
+    Parameters
+    ----------
+    coord : array-like of int
+        Three-element sequence ``(it, ix, iy)`` specifying the datacube
+        origin.
+    RR : xr.DataArray
+        Rain rate data array from the Zarr dataset.
+    N_rand : int
+        Number of random acceptance trials per datacube.
+    seed : int or None
+        Random seed for reproducibility. If ``None``, non-deterministic.
+    acceptance_probability : callable
+        Function that takes a data array and returns a probability in
+        ``[0, 1]``.
+
+    Returns
+    -------
+    hits : list of tuple of int
+        List of accepted ``(it, ix, iy)`` tuples (may contain duplicates
+        if accepted multiple times).
     """
 
     try:
@@ -96,7 +125,20 @@ def process_datacube(coord, RR, N_rand, seed, acceptance_probability):
 
 def file_writer(output_queue, filename, batch_size=1000):
     """
-    Dedicated thread that writes results to file as they arrive from queue.
+    Dedicated writer thread that flushes results to a CSV file in batches.
+
+    Reads lists of ``(t, x, y)`` tuples from the queue and writes them as
+    CSV rows. Stops when a ``None`` sentinel is received.
+
+    Parameters
+    ----------
+    output_queue : queue.Queue
+        Thread-safe queue providing lists of ``(t, x, y)`` tuples.
+    filename : str
+        Path to the output CSV file.
+    batch_size : int, optional
+        Number of rows to buffer before flushing to disk. Default is
+        ``1000``.
     """
     with open(filename, "w") as f:
         f.write("t,x,y\n")
