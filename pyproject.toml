@@ -1,7 +1,7 @@
 [project]
-name = "dpc-nowcasting"
+name = "ConvGRU-Ensemble"
 version = "0.1.0"
-description = "Add your description here"
+description = "Ensemble precipitation nowcasting using Convolutional GRU networks"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
