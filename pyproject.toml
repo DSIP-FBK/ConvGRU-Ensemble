@@ -18,6 +18,7 @@ dependencies = [
     "jupyterlab>=4.5.5",
     "matplotlib>=3.10.8",
     "numpy>=2.3.5",
+    "netCDF4>=1.7.0",
     "pandas>=2.3.3",
     "pysteps>=1.19.0",
     "pytorch-lightning>=2.6.0",
