@@ -4,9 +4,10 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 import torchvision
-from losses import build_loss
-from model import EncoderDecoder
-from utils import normalized_to_rainrate, rainrate_to_normalized
+
+from .losses import build_loss
+from .model import EncoderDecoder
+from .utils import normalized_to_rainrate, rainrate_to_normalized
 
 
 def apply_radar_colormap(tensor: torch.Tensor) -> torch.Tensor:
@@ -448,7 +449,32 @@ class RadarLightningModel(pl.LightningModule):
             checkpoint_path,
             map_location=torch.device(device),
             strict=True,
+            weights_only=False,
         )
+
+    @classmethod
+    def from_pretrained(cls, repo_id: str, filename: str = "model.ckpt", device: str = "cpu") -> "RadarLightningModel":
+        """
+        Load a pretrained model from HuggingFace Hub.
+
+        Parameters
+        ----------
+        repo_id : str
+            HuggingFace Hub repository ID (e.g., ``'it4lia/irene'``).
+        filename : str, optional
+            Name of the checkpoint file in the repository. Default is
+            ``'model.ckpt'``.
+        device : str, optional
+            Device to map the model weights to. Default is ``'cpu'``.
+
+        Returns
+        -------
+        model : RadarLightningModel
+            Model with loaded pretrained weights.
+        """
+        from .hub import from_pretrained
+
+        return from_pretrained(repo_id, filename, device)
 
     def predict(self, past: torch.Tensor, forecast_steps: int = 1, ensemble_size: int | None = 1) -> torch.Tensor:
         """

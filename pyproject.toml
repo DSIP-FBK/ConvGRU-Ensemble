@@ -28,7 +28,18 @@ dependencies = [
     "torchvision>=0.24.1",
     "xarray>=2025.12.0",
     "zarr>=3.1.5",
+    "huggingface_hub>=0.27.0",
 ]
+
+[project.optional-dependencies]
+serve = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+    "python-multipart>=0.0.18",
+]
+
+[project.scripts]
+convgru-ensemble = "convgru_ensemble.cli:main"
 
 [dependency-groups]
 dev = [
@@ -38,20 +49,12 @@ dev = [
 ]
 
 [tool.setuptools]
-package-dir = {"" = "convgru-ens"}
-py-modules = [
-    "datamodule",
-    "lightning_model",
-    "losses",
-    "model",
-    "train",
-    "utils",
-]
+packages = ["convgru_ensemble"]
 
 [tool.ruff]
 target-version = "py313"
 line-length = 120
-extend-exclude = ["convgru-ens/notebooks/"]
+extend-exclude = ["notebooks/", "importance_sampler/"]
 
 [tool.ruff.lint]
 select = [
@@ -70,4 +73,4 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["convgru-ens"]
+known-first-party = ["convgru_ensemble"]

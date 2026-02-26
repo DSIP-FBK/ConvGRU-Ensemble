@@ -1,22 +1,20 @@
 # train.py
 import os
 import sys
-
-sys.path.append("../")
-
 from datetime import datetime
 
 import fiddle as fdl
 import torch
 import yaml
 from absl import app, flags
-from datamodule import RadarDataModule
 from fiddle import absl_flags, printing
-from lightning_model import RadarLightningModel
-from losses import PIXEL_LOSSES
 from pytorch_lightning import Trainer, seed_everything
 from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
+
+from .datamodule import RadarDataModule
+from .lightning_model import RadarLightningModel
+from .losses import PIXEL_LOSSES
 
 seed_everything(42, workers=True)
 

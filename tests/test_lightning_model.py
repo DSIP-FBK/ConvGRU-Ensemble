@@ -1,6 +1,7 @@
 import numpy as np
 import torch
-from lightning_model import RadarLightningModel
+
+from convgru_ensemble.lightning_model import RadarLightningModel
 
 
 def test_predict_handles_unpadded_inputs():
@@ -22,10 +23,11 @@ def test_predict_handles_unpadded_inputs():
 def test_from_checkpoint_delegates_to_lightning_loader(monkeypatch):
     captured = {}
 
-    def fake_loader(cls, checkpoint_path, map_location=None, strict=None):
+    def fake_loader(cls, checkpoint_path, map_location=None, strict=None, weights_only=None):
         captured["checkpoint_path"] = checkpoint_path
         captured["map_location"] = map_location
         captured["strict"] = strict
+        captured["weights_only"] = weights_only
         return "loaded-model"
 
     monkeypatch.setattr(RadarLightningModel, "load_from_checkpoint", classmethod(fake_loader))

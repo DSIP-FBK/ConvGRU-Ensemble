@@ -1,8 +1,23 @@
-import sys
-from pathlib import Path
+import numpy as np
+import pytest
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-MODULE_DIR = PROJECT_ROOT / "convgru-ens"
+from convgru_ensemble.lightning_model import RadarLightningModel
 
-if str(MODULE_DIR) not in sys.path:
-    sys.path.insert(0, str(MODULE_DIR))
+
+@pytest.fixture
+def model_small():
+    """Small model with num_blocks=2 for fast testing."""
+    return RadarLightningModel(
+        input_channels=1,
+        num_blocks=2,
+        forecast_steps=2,
+        ensemble_size=2,
+        noisy_decoder=False,
+    )
+
+
+@pytest.fixture
+def sample_rain_rate():
+    """Synthetic rain rate data of shape (T, H, W)."""
+    rng = np.random.default_rng(42)
+    return rng.random((4, 16, 16), dtype=np.float32) * 10.0  # 0-10 mm/h

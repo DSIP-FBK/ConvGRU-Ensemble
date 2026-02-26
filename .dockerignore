@@ -1,0 +1,15 @@
+.git
+.github
+.venv
+__pycache__
+*.pyc
+*.zarr
+logs/
+data/
+notebooks/
+importance_sampler/
+tests/
+*.egg-info
+.ruff_cache
+.pytest_cache
+.claude

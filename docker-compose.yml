@@ -1,0 +1,12 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./checkpoints:/app/checkpoints
+    environment:
+      - MODEL_CHECKPOINT=/app/checkpoints/model.ckpt
+      - DEVICE=cpu
+      # Alternative: download from HuggingFace Hub
+      # - HF_REPO_ID=it4lia/irene

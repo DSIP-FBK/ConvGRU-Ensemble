@@ -6,7 +6,8 @@ import pytorch_lightning as pl
 import torch
 import xarray as xr
 from torch.utils.data import DataLoader, Dataset
-from utils import rainrate_to_normalized
+
+from .utils import rainrate_to_normalized
 
 
 class SampledRadarDataset(Dataset):

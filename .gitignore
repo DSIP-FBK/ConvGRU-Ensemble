@@ -1,10 +1,17 @@
 *.nc
+!examples/*.nc
 *.zarr/
 __pycache__/
 .ipynb_checkpoints/
 checkpoints/
+*.ckpt
 *.mp4
 dist/
 build/
 *.egg-info/
 .pytest_cache/
+.ruff_cache/
+logs/
+data/
+.env
+.venv/
