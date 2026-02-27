@@ -83,26 +83,31 @@ async def predict(
     """
     t0 = time.perf_counter()
 
-    # Validate file extension
-    if file.filename and not file.filename.endswith(".nc"):
-        raise HTTPException(
-            status_code=422,
-            detail=f"Expected a NetCDF file (.nc), got '{file.filename}'.",
-        )
-
-    # Read uploaded NetCDF
+    # Read file and validate magic bytes
     content = await file.read()
     if len(content) == 0:
         raise HTTPException(status_code=422, detail="Uploaded file is empty.")
 
+    # HDF5: \x89HDF\r\n\x1a\n, classic NetCDF: CDF\x01 or CDF\x02
+    is_hdf5 = content[:8] == b"\x89HDF\r\n\x1a\n"
+    is_cdf = content[:3] == b"CDF"
+    if not (is_hdf5 or is_cdf):
+        raise HTTPException(
+            status_code=422,
+            detail="Not a valid NetCDF/HDF5 file (invalid magic bytes).",
+        )
+
+    # Parse the dataset
+    engine = "h5netcdf" if is_hdf5 else "scipy"
     try:
-        ds = xr.open_dataset(io.BytesIO(content), engine="h5netcdf")
+        ds = xr.open_dataset(io.BytesIO(content), engine=engine)
     except Exception as exc:
         raise HTTPException(
             status_code=422,
             detail=f"Failed to read NetCDF file: {exc}",
         ) from exc
 
+    # Check variable exists
     if variable not in ds:
         available = list(ds.data_vars)
         raise HTTPException(
@@ -110,19 +115,34 @@ async def predict(
             detail=f"Variable '{variable}' not found. Available: {available}",
         )
 
-    data = ds[variable].values
-    if data.ndim != 3:
+    da = ds[variable]
+
+    # Must be 3D
+    if da.ndim != 3:
         raise HTTPException(
             status_code=422,
-            detail=f"Expected 3D data (T, H, W), got {data.ndim}D with shape {data.shape}.",
+            detail=f"Expected 3D variable (time, y, x), got {da.ndim}D with dims {da.dims}.",
         )
 
-    if data.shape[0] < 2:
+    # First dimension must be temporal
+    time_names = {"time", "t", "step", "forecast_time", "lead_time"}
+    first_dim = da.dims[0].lower()
+    if first_dim not in time_names and da.shape[0] >= da.shape[1]:
         raise HTTPException(
             status_code=422,
-            detail=f"Need at least 2 timesteps, got {data.shape[0]}.",
+            detail=(
+                f"First dimension should be time, got dims {da.dims} with shape {da.shape}. "
+                "Expected shape (T, H, W) where T < H and T < W."
+            ),
         )
 
+    if da.shape[0] < 2:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Need at least 2 timesteps, got {da.shape[0]}.",
+        )
+
+    data = da.values
     if not np.isfinite(data).all():
         raise HTTPException(
             status_code=422,
