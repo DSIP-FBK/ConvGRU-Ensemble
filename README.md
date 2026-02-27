@@ -71,9 +71,27 @@ pip install convgru-ensemble[serve]
 convgru-ensemble serve --hub-repo it4lia/irene --port 8000
 ```
 
+**Submit a forecast request:**
+
 ```bash
+# 4-hour forecast (4 steps × 1h) with 5 ensemble members
+curl -X POST "http://localhost:8000/predict?forecast_steps=4&ensemble_size=5" \
+    -F "file=@examples/sample_data.nc" \
+    -o predictions.nc
+
+# Use default settings (12 steps, 10 members)
 curl -X POST http://localhost:8000/predict \
-    -F "file=@input.nc" -o predictions.nc
+    -F "file=@examples/sample_data.nc" -o predictions.nc
+```
+
+**Read the predictions:**
+
+```python
+import xarray as xr
+
+ds = xr.open_dataset("predictions.nc")
+print(ds.precipitation_forecast.shape)
+# (5, 4, 1400, 1200) — ensemble_member, forecast_step, y, x
 ```
 
 | Endpoint | Method | Description |
@@ -81,6 +99,16 @@ curl -X POST http://localhost:8000/predict \
 | `/health` | GET | Health check |
 | `/model/info` | GET | Model metadata and hyperparameters |
 | `/predict` | POST | Upload NetCDF, get ensemble forecast as NetCDF |
+
+**`/predict` query parameters:**
+
+| Parameter | Default | Description |
+|---|---|---|
+| `variable` | `RR` | Name of the rain rate variable in the NetCDF |
+| `forecast_steps` | `12` | Number of future timesteps (1–48) |
+| `ensemble_size` | `10` | Number of ensemble members (1–50) |
+
+The input NetCDF must contain a 3D variable `(T, H, W)` with rain rate in mm/h and at least 2 timesteps.
 
 </details>
 

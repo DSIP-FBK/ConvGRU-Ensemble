@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 
 import numpy as np
 import xarray as xr
-from fastapi import FastAPI, File, Query, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 
 _model = None
@@ -83,22 +83,50 @@ async def predict(
     """
     t0 = time.perf_counter()
 
+    # Validate file extension
+    if file.filename and not file.filename.endswith(".nc"):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Expected a NetCDF file (.nc), got '{file.filename}'.",
+        )
+
     # Read uploaded NetCDF
     content = await file.read()
-    ds = xr.open_dataset(io.BytesIO(content), engine="h5netcdf")
+    if len(content) == 0:
+        raise HTTPException(status_code=422, detail="Uploaded file is empty.")
+
+    try:
+        ds = xr.open_dataset(io.BytesIO(content), engine="h5netcdf")
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Failed to read NetCDF file: {exc}",
+        ) from exc
 
     if variable not in ds:
         available = list(ds.data_vars)
-        return Response(
-            content=f"Variable '{variable}' not found. Available: {available}",
+        raise HTTPException(
             status_code=422,
+            detail=f"Variable '{variable}' not found. Available: {available}",
         )
 
     data = ds[variable].values
     if data.ndim != 3:
-        return Response(
-            content=f"Expected 3D data (T, H, W), got shape {data.shape}",
+        raise HTTPException(
             status_code=422,
+            detail=f"Expected 3D data (T, H, W), got {data.ndim}D with shape {data.shape}.",
+        )
+
+    if data.shape[0] < 2:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Need at least 2 timesteps, got {data.shape[0]}.",
+        )
+
+    if not np.isfinite(data).all():
+        raise HTTPException(
+            status_code=422,
+            detail="Input data contains NaN or Inf values.",
         )
 
     past = data.astype(np.float32)
