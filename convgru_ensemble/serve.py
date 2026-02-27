@@ -1,7 +1,7 @@
 """FastAPI inference server for ConvGRU-Ensemble nowcasting model."""
 
-import io
 import os
+import tempfile
 import time
 from contextlib import asynccontextmanager
 
@@ -83,9 +83,13 @@ async def predict(
     """
     t0 = time.perf_counter()
 
-    # Read uploaded NetCDF
+    # Read uploaded NetCDF (write to temp file for reliable engine detection)
     content = await file.read()
-    ds = xr.open_dataset(io.BytesIO(content))
+    with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as tmp:
+        tmp.write(content)
+        tmp_path = tmp.name
+    ds = xr.open_dataset(tmp_path)
+    os.unlink(tmp_path)
 
     if variable not in ds:
         available = list(ds.data_vars)
@@ -125,12 +129,18 @@ async def predict(
         },
     )
 
-    buf = io.BytesIO()
-    ds_out.to_netcdf(buf)
-    buf.seek(0)
+    encoding = {
+        "precipitation_forecast": {"zlib": True, "complevel": 4},
+    }
+    with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as tmp_out:
+        tmp_out_path = tmp_out.name
+    ds_out.to_netcdf(tmp_out_path, encoding=encoding)
+    with open(tmp_out_path, "rb") as f:
+        out_bytes = f.read()
+    os.unlink(tmp_out_path)
 
     return Response(
-        content=buf.getvalue(),
+        content=out_bytes,
         media_type="application/x-netcdf",
         headers={
             "Content-Disposition": "attachment; filename=predictions.nc",
