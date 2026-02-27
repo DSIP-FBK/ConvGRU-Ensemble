@@ -54,7 +54,7 @@ def test_predict_returns_netcdf(client):
     # Create a small NetCDF file in memory
     ds = xr.Dataset({"RR": xr.DataArray(np.zeros((4, 8, 8), dtype=np.float32), dims=["time", "y", "x"])})
     buf = io.BytesIO()
-    ds.to_netcdf(buf)
+    ds.to_netcdf(buf, engine="scipy")
     buf.seek(0)
 
     resp = client.post(

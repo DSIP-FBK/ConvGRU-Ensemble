@@ -2,6 +2,7 @@
 
 import io
 import os
+import tempfile
 import time
 from contextlib import asynccontextmanager
 
@@ -182,12 +183,15 @@ async def predict(
     encoding = {
         "precipitation_forecast": {"zlib": True, "complevel": 4},
     }
-    buf = io.BytesIO()
-    ds_out.to_netcdf(buf, engine="h5netcdf", encoding=encoding)
-    buf.seek(0)
+    with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as tmp_out:
+        tmp_out_path = tmp_out.name
+    ds_out.to_netcdf(tmp_out_path, encoding=encoding)
+    with open(tmp_out_path, "rb") as fh:
+        out_bytes = fh.read()
+    os.unlink(tmp_out_path)
 
     return Response(
-        content=buf.getvalue(),
+        content=out_bytes,
         media_type="application/x-netcdf",
         headers={
             "Content-Disposition": "attachment; filename=predictions.nc",
