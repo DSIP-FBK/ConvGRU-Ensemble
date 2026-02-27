@@ -5,6 +5,7 @@ import os
 import time
 from contextlib import asynccontextmanager
 
+import magic
 import numpy as np
 import xarray as xr
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
@@ -83,22 +84,21 @@ async def predict(
     """
     t0 = time.perf_counter()
 
-    # Read file and validate magic bytes
+    # Read file and detect type
     content = await file.read()
     if len(content) == 0:
         raise HTTPException(status_code=422, detail="Uploaded file is empty.")
 
-    # HDF5: \x89HDF\r\n\x1a\n, classic NetCDF: CDF\x01 or CDF\x02
-    is_hdf5 = content[:8] == b"\x89HDF\r\n\x1a\n"
-    is_cdf = content[:3] == b"CDF"
-    if not (is_hdf5 or is_cdf):
+    mime = magic.from_buffer(content, mime=True)
+    if mime == "application/x-hdf5":
+        engine = "h5netcdf"
+    elif mime in ("application/x-netcdf", "application/octet-stream") and content[:3] == b"CDF":
+        engine = "scipy"
+    else:
         raise HTTPException(
             status_code=422,
-            detail="Not a valid NetCDF/HDF5 file (invalid magic bytes).",
+            detail=f"Expected a NetCDF/HDF5 file, got '{mime}'.",
         )
-
-    # Parse the dataset
-    engine = "h5netcdf" if is_hdf5 else "scipy"
     try:
         ds = xr.open_dataset(io.BytesIO(content), engine=engine)
     except Exception as exc:
