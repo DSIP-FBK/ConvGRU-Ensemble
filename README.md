@@ -13,13 +13,13 @@
 
 <br>
 
-<table border="0" cellspacing="0" cellpadding="10" align="center">
-<tr>
-<td colspan="2" align="center"><a href="https://it4lia-aifactory.eu"><img src="https://it4lia-aifactory.eu/wp-content/uploads/2025/05/logo-IT4LIA-AI-factory.svg" width="200" alt="IT4LIA AI-Factory"></a></td>
+<table align="center" style="border: none; border-collapse: collapse;">
+<tr style="border: none;">
+<td colspan="2" align="center" style="border: none; padding: 10px;"><a href="https://it4lia-aifactory.eu"><img src="https://it4lia-aifactory.eu/wp-content/uploads/2025/05/logo-IT4LIA-AI-factory.svg" width="200" alt="IT4LIA AI-Factory"></a></td>
 </tr>
-<tr>
-<td align="center"><a href="https://www.fbk.eu"><img src="https://webvalley.fbk.eu/static/img/logos/fbk-logo-blue.png" width="120" alt="Fondazione Bruno Kessler"></a></td>
-<td align="center"><a href="https://www.italiameteo.eu"><img src="https://it4lia-aifactory.eu/wp-content/uploads/2025/08/logo-italiameteo.svg" width="180" alt="ItaliaMeteo"></a></td>
+<tr style="border: none;">
+<td align="center" style="border: none; padding: 10px;"><a href="https://www.fbk.eu"><img src="https://webvalley.fbk.eu/static/img/logos/fbk-logo-blue.png" width="120" alt="Fondazione Bruno Kessler"></a></td>
+<td align="center" style="border: none; padding: 10px;"><a href="https://www.italiameteo.eu"><img src="https://it4lia-aifactory.eu/wp-content/uploads/2025/08/logo-italiameteo.svg" width="180" alt="ItaliaMeteo"></a></td>
 </tr>
 </table>
 
@@ -269,13 +269,13 @@ Developed at **Fondazione Bruno Kessler (FBK)**, Trento, Italy, as part of the *
 
 <br>
 
-<table border="0" cellspacing="0" cellpadding="8" align="center">
-<tr>
-<td colspan="2" align="center"><a href="https://it4lia-aifactory.eu"><img src="https://it4lia-aifactory.eu/wp-content/uploads/2025/05/logo-IT4LIA-AI-factory.svg" width="170" alt="IT4LIA AI-Factory"></a></td>
+<table align="center" style="border: none; border-collapse: collapse;">
+<tr style="border: none;">
+<td colspan="2" align="center" style="border: none; padding: 8px;"><a href="https://it4lia-aifactory.eu"><img src="https://it4lia-aifactory.eu/wp-content/uploads/2025/05/logo-IT4LIA-AI-factory.svg" width="170" alt="IT4LIA AI-Factory"></a></td>
 </tr>
-<tr>
-<td align="center"><a href="https://www.fbk.eu"><img src="https://webvalley.fbk.eu/static/img/logos/fbk-logo-blue.png" width="100" alt="Fondazione Bruno Kessler"></a></td>
-<td align="center"><a href="https://www.italiameteo.eu"><img src="https://it4lia-aifactory.eu/wp-content/uploads/2025/08/logo-italiameteo.svg" width="150" alt="ItaliaMeteo"></a></td>
+<tr style="border: none;">
+<td align="center" style="border: none; padding: 8px;"><a href="https://www.fbk.eu"><img src="https://webvalley.fbk.eu/static/img/logos/fbk-logo-blue.png" width="100" alt="Fondazione Bruno Kessler"></a></td>
+<td align="center" style="border: none; padding: 8px;"><a href="https://www.italiameteo.eu"><img src="https://it4lia-aifactory.eu/wp-content/uploads/2025/08/logo-italiameteo.svg" width="150" alt="ItaliaMeteo"></a></td>
 </tr>
 </table>
 
