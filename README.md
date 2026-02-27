@@ -13,11 +13,11 @@
 
 <br>
 
-<a href="https://www.fbk.eu"><img src="https://webvalley.fbk.eu/static/img/logos/fbk-logo-blue.png" height="55" alt="Fondazione Bruno Kessler"></a>
+<a href="https://www.fbk.eu"><img src="https://webvalley.fbk.eu/static/img/logos/fbk-logo-blue.png" width="120" alt="Fondazione Bruno Kessler"></a>
 &nbsp;&nbsp;&nbsp;&nbsp;
-<a href="https://it4lia-aifactory.eu"><img src="https://it4lia-aifactory.eu/wp-content/uploads/2025/05/logo-IT4LIA-AI-factory.svg" height="55" alt="IT4LIA AI-Factory"></a>
+<a href="https://it4lia-aifactory.eu"><img src="https://it4lia-aifactory.eu/wp-content/uploads/2025/05/logo-IT4LIA-AI-factory.svg" width="180" alt="IT4LIA AI-Factory"></a>
 &nbsp;&nbsp;&nbsp;&nbsp;
-<a href="https://www.italiameteo.eu"><img src="https://it4lia-aifactory.eu/wp-content/uploads/2025/08/logo-italiameteo.svg" height="55" alt="ItaliaMeteo"></a>
+<a href="https://www.italiameteo.eu"><img src="https://it4lia-aifactory.eu/wp-content/uploads/2025/08/logo-italiameteo.svg" width="180" alt="ItaliaMeteo"></a>
 
 <br><br>
 
@@ -265,11 +265,11 @@ Developed at **Fondazione Bruno Kessler (FBK)**, Trento, Italy, as part of the *
 
 <br>
 
-<a href="https://www.fbk.eu"><img src="https://webvalley.fbk.eu/static/img/logos/fbk-logo-blue.png" height="45" alt="Fondazione Bruno Kessler"></a>
+<a href="https://www.fbk.eu"><img src="https://webvalley.fbk.eu/static/img/logos/fbk-logo-blue.png" width="100" alt="Fondazione Bruno Kessler"></a>
 &nbsp;&nbsp;&nbsp;&nbsp;
-<a href="https://it4lia-aifactory.eu"><img src="https://it4lia-aifactory.eu/wp-content/uploads/2025/05/logo-IT4LIA-AI-factory.svg" height="45" alt="IT4LIA AI-Factory"></a>
+<a href="https://it4lia-aifactory.eu"><img src="https://it4lia-aifactory.eu/wp-content/uploads/2025/05/logo-IT4LIA-AI-factory.svg" width="150" alt="IT4LIA AI-Factory"></a>
 &nbsp;&nbsp;&nbsp;&nbsp;
-<a href="https://www.italiameteo.eu"><img src="https://it4lia-aifactory.eu/wp-content/uploads/2025/08/logo-italiameteo.svg" height="45" alt="ItaliaMeteo"></a>
+<a href="https://www.italiameteo.eu"><img src="https://it4lia-aifactory.eu/wp-content/uploads/2025/08/logo-italiameteo.svg" width="150" alt="ItaliaMeteo"></a>
 
 </div>
 
