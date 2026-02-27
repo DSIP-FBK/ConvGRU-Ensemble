@@ -150,13 +150,14 @@ async def predict(
         )
 
     data = da.values
-    if not np.isfinite(data).all():
+    if np.isinf(data).any():
         raise HTTPException(
             status_code=422,
-            detail="Input data contains NaN or Inf values.",
+            detail="Input data contains Inf values.",
         )
 
-    past = data.astype(np.float32)
+    # Replace NaN with 0 (no rain) — common for masked radar pixels
+    past = np.nan_to_num(data, nan=0.0).astype(np.float32)
 
     # Run inference
     preds = _model.predict(past, forecast_steps=forecast_steps, ensemble_size=ensemble_size)
@@ -185,7 +186,7 @@ async def predict(
     }
     with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as tmp_out:
         tmp_out_path = tmp_out.name
-    ds_out.to_netcdf(tmp_out_path, encoding=encoding)
+    ds_out.to_netcdf(tmp_out_path, engine="netcdf4", encoding=encoding)
     with open(tmp_out_path, "rb") as fh:
         out_bytes = fh.read()
     os.unlink(tmp_out_path)
