@@ -105,8 +105,8 @@ print(ds.precipitation_forecast.shape)
 | Parameter | Default | Description |
 |---|---|---|
 | `variable` | `RR` | Name of the rain rate variable in the NetCDF |
-| `forecast_steps` | `12` | Number of future timesteps (1–48) |
-| `ensemble_size` | `10` | Number of ensemble members (1–50) |
+| `forecast_steps` | `12` | Number of future 5-min steps (1–48, i.e. max 4h) |
+| `ensemble_size` | `10` | Number of ensemble members (1–10) |
 
 The input NetCDF must contain a 3D variable `(T, H, W)` with rain rate in mm/h and at least 2 timesteps.
 

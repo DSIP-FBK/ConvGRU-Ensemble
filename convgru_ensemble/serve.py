@@ -73,8 +73,8 @@ async def model_info():
 async def predict(
     file: UploadFile = File(..., description="NetCDF file with rain rate data (T, H, W)"),  # noqa: B008
     variable: str = Query("RR", description="Name of the rain rate variable"),  # noqa: B008
-    forecast_steps: int = Query(12, ge=1, le=48, description="Number of future timesteps"),  # noqa: B008
-    ensemble_size: int = Query(10, ge=1, le=50, description="Number of ensemble members"),  # noqa: B008
+    forecast_steps: int = Query(12, ge=1, le=48, description="Number of future 5-min steps (max 48 = 4h)"),  # noqa: B008
+    ensemble_size: int = Query(10, ge=1, le=10, description="Number of ensemble members (max 10)"),  # noqa: B008
 ):
     """
     Run ensemble nowcasting inference on uploaded NetCDF data.
@@ -84,10 +84,16 @@ async def predict(
     """
     t0 = time.perf_counter()
 
-    # Read file and detect type
+    # Read file and check size (max 100 MB)
+    max_size = 100 * 1024 * 1024
     content = await file.read()
     if len(content) == 0:
         raise HTTPException(status_code=422, detail="Uploaded file is empty.")
+    if len(content) > max_size:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large ({len(content) / 1024 / 1024:.0f} MB). Maximum is 100 MB.",
+        )
 
     mime = magic.from_buffer(content, mime=True)
     if mime == "application/x-hdf5":
